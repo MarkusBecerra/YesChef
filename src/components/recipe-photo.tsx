@@ -18,7 +18,7 @@ export function RecipePhoto({
   return (
     <div className={cn("relative overflow-hidden bg-line-soft", className)}>
       {src ? (
-        <Image src={src} alt={alt} fill sizes={sizes} priority={priority} className="object-cover" />
+        <Image src={src} alt={alt} fill sizes={sizes} priority={priority} unoptimized={src.startsWith("/")} className="object-cover" />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center text-ink-faint">
           <svg viewBox="0 0 64 64" className="size-1/3 max-h-16" fill="none" aria-hidden>

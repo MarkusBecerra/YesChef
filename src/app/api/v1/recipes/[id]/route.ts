@@ -3,6 +3,7 @@ import { jsonError, parseId, withErrorHandling } from "@/lib/http";
 import { parseBody } from "@/lib/validate";
 import { deleteRecipe, getRecipe, patchRecipe, updateRecipe } from "@/server/recipes/service";
 import { recipeInputSchema, recipePatchSchema } from "@/server/recipes/types";
+import { getPhotoStorage } from "@/server/storage";
 
 type Ctx = RouteContext<"/api/v1/recipes/[id]">;
 
@@ -29,5 +30,7 @@ export const PATCH = withErrorHandling(async (request: NextRequest, ctx: Ctx) =>
 
 export const DELETE = withErrorHandling(async (_request: NextRequest, ctx: Ctx) => {
   const deleted = await deleteRecipe(parseId((await ctx.params).id));
-  return deleted ? new Response(null, { status: 204 }) : jsonError(404, "Recipe not found");
+  if (!deleted) return jsonError(404, "Recipe not found");
+  if (deleted.photoUrl) await getPhotoStorage().delete(deleted.photoUrl);
+  return new Response(null, { status: 204 });
 });

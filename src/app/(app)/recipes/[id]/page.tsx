@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeleteRecipeButton } from "@/components/delete-recipe-button";
 import { IngredientList } from "@/components/ingredient-list";
+import { PhotoUploader } from "@/components/photo-uploader";
 import { RecipePhoto } from "@/components/recipe-photo";
 import { Pill } from "@/components/ui/pill";
 import { DIFFICULTY_LABELS, formatCost, formatMinutes, formatMoney, plural } from "@/lib/format";
@@ -55,13 +56,16 @@ export default async function RecipePage(props: PageProps<"/recipes/[id]">) {
         <span aria-hidden>←</span> Recipes
       </Link>
 
-      <RecipePhoto
-        src={recipe.photoUrl}
-        alt={recipe.title}
-        sizes="(min-width: 768px) 768px, 100vw"
-        priority
-        className="-mx-4 aspect-[4/3] max-h-[440px] sm:mx-0 sm:rounded-card"
-      />
+      <div className="relative -mx-4 sm:mx-0">
+        <RecipePhoto
+          src={recipe.photoUrl}
+          alt={recipe.title}
+          sizes="(min-width: 768px) 768px, 100vw"
+          priority
+          className="aspect-[4/3] max-h-[440px] sm:rounded-card"
+        />
+        <PhotoUploader recipeId={recipe.id} hasPhoto={recipe.photoUrl !== null} className="absolute bottom-3 left-4 sm:left-3" />
+      </div>
 
       <header className="flex flex-col gap-3">
         <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight">
