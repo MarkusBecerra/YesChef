@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CookHistory } from "@/components/cook-history";
 import { DeleteRecipeButton } from "@/components/delete-recipe-button";
 import { IngredientList } from "@/components/ingredient-list";
 import { PhotoUploader } from "@/components/photo-uploader";
@@ -128,6 +129,8 @@ export default async function RecipePage(props: PageProps<"/recipes/[id]">) {
           <DeleteRecipeButton id={recipe.id} title={recipe.title} />
         </div>
       </header>
+
+      <CookHistory recipeId={recipe.id} logs={recipe.cookLogs} />
 
       <Section title="Ingredients" count={recipe.ingredients.length}>
         {recipe.ingredients.length ? <IngredientList items={recipe.ingredients} /> : <p className="text-sm text-ink-muted">None listed.</p>}
