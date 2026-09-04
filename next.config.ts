@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // libSQL ships a native binary; keep it out of the server bundle.
+  serverExternalPackages: ["@libsql/client", "libsql"],
 };
 
 export default nextConfig;
