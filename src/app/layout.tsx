@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   },
   description: "A personal recipe log: what I've cooked, how it went, and what to cook next.",
   applicationName: "YesChef",
+  icons: {
+    apple: "/icons/180",
+  },
   appleWebApp: {
     capable: true,
     title: "YesChef",
