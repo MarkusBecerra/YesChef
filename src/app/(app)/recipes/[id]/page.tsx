@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CookHistory } from "@/components/cook-history";
 import { DeleteRecipeButton } from "@/components/delete-recipe-button";
+import { FavoriteButton } from "@/components/favorite-button";
 import { IngredientList } from "@/components/ingredient-list";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { RecipePhoto } from "@/components/recipe-photo";
@@ -102,7 +103,9 @@ export default async function RecipePage(props: PageProps<"/recipes/[id]">) {
           {cost && <Pill tone="spice">{spent ? `${cost} · ${spent}` : cost}</Pill>}
           {!cost && spent && <Pill tone="spice">{spent}</Pill>}
           {recipe.tags.map((tag) => (
-            <Pill key={tag}>#{tag}</Pill>
+            <Link key={tag} href={`/?tag=${encodeURIComponent(tag)}`} className="hover:opacity-80">
+              <Pill>#{tag}</Pill>
+            </Link>
           ))}
         </div>
 
@@ -119,7 +122,8 @@ export default async function RecipePage(props: PageProps<"/recipes/[id]">) {
           </p>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <FavoriteButton recipeId={recipe.id} isFavorite={recipe.isFavorite} />
           <Link
             href={`/recipes/${recipe.id}/edit`}
             className="inline-flex h-8 items-center rounded-full border border-line bg-paper-raised px-3 text-sm font-medium hover:bg-line-soft"

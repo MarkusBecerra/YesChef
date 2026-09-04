@@ -9,8 +9,14 @@ function first(params: RawParams, key: string): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+export type FilterState = Required<Omit<RecipeListQuery, "difficulty">> & { difficulty?: Difficulty };
+
+export function hasActiveFilters(state: FilterState): boolean {
+  return Boolean(state.q || state.tag || state.difficulty || state.favorite);
+}
+
 /** Turn URL search params into a list query, ignoring anything malformed. */
-export function parseListQuery(params: RawParams): Required<Omit<RecipeListQuery, "difficulty">> & { difficulty?: Difficulty } {
+export function parseListQuery(params: RawParams): FilterState {
   const q = first(params, "q")?.trim().slice(0, 200) ?? "";
   const tag = first(params, "tag")?.trim().slice(0, 40) ?? "";
   const category = first(params, "category")?.trim().slice(0, 60) ?? "";
