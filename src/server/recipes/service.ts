@@ -297,3 +297,14 @@ export async function deleteRecipe(id: number): Promise<{ photoUrl: string | nul
     return { photoUrl: existing.photoUrl };
   });
 }
+
+/** Distinct categories in use, for form suggestions. */
+export async function listCategories(): Promise<string[]> {
+  const db = getDb();
+  const rows = await db
+    .selectDistinct({ category: recipes.category })
+    .from(recipes)
+    .where(sql`${recipes.category} is not null and ${recipes.category} != ''`)
+    .orderBy(sql`${recipes.category} collate nocase`);
+  return rows.map((r) => r.category!).filter(Boolean);
+}

@@ -36,3 +36,10 @@ export async function readJson<T = unknown>(request: Request): Promise<T> {
     throw new HttpError(400, "Request body must be valid JSON");
   }
 }
+
+/** Parse a positive integer route param, 404 otherwise. */
+export function parseId(raw: string): number {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) throw new HttpError(404, "Not found");
+  return n;
+}
