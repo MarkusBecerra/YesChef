@@ -24,6 +24,7 @@ export function RecipeForm({
   existingTags,
   existingCategories,
   banner,
+  photoSourceUrl,
 }: {
   mode: "create" | "edit";
   recipeId?: number;
@@ -31,6 +32,8 @@ export function RecipeForm({
   existingTags: string[];
   existingCategories: string[];
   banner?: React.ReactNode;
+  /** Import flow: a remote image the server copies into storage when the recipe is created. */
+  photoSourceUrl?: string | null;
 }) {
   const router = useRouter();
   const [values, setValues] = useState<RecipeFormValues>(initialValues ?? EMPTY_VALUES);
@@ -62,7 +65,7 @@ export function RecipeForm({
     setErrors(null);
     setFormError(null);
     try {
-      const body = JSON.stringify(payloadFromValues(values));
+      const body = JSON.stringify({ ...payloadFromValues(values), ...(mode === "create" && photoSourceUrl ? { photoSourceUrl } : {}) });
       const { recipe } =
         mode === "create"
           ? await api<{ recipe: RecipeDetail }>("/api/v1/recipes", { method: "POST", body })

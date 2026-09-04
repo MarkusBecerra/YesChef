@@ -29,6 +29,8 @@ export const recipeInputSchema = z.object({
   ingredients: z.array(z.string().trim().min(1).max(500)).max(300).default([]),
   steps: z.array(z.string().trim().min(1).max(5000)).max(300).default([]),
   tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+  /** Import flow only: a remote image to copy into our storage after creating. */
+  photoSourceUrl: z.preprocess(blankToNull, z.url().max(2000).nullable()).optional(),
 });
 export type RecipeInput = z.input<typeof recipeInputSchema>;
 export type ParsedRecipeInput = z.output<typeof recipeInputSchema>;

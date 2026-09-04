@@ -1,3 +1,4 @@
+import type { ImportResult } from "@/server/import/draft";
 import type { RecipeDetail, RecipeInput } from "@/server/recipes/types";
 import { splitLines } from "@/server/recipes/values";
 
@@ -95,5 +96,27 @@ export function payloadFromValues(v: RecipeFormValues): RecipeInput {
       .split(/[,\n]/)
       .map((t) => t.trim())
       .filter(Boolean),
+  };
+}
+
+/** Prefill the form from an import result; the user reviews before saving. */
+export function valuesFromImport(result: ImportResult): RecipeFormValues {
+  const d = result.draft;
+  return {
+    ...EMPTY_VALUES,
+    title: d.title ?? "",
+    description: d.description ?? "",
+    ingredients: d.ingredients.join("\n"),
+    steps: d.steps.join("\n\n"),
+    prepMinutes: str(d.prepMinutes),
+    cookMinutes: str(d.cookMinutes),
+    totalMinutes: str(d.totalMinutes),
+    servings: str(d.servings),
+    yieldText: d.yieldText ?? "",
+    category: d.category ?? "",
+    tags: d.tags.join(", "),
+    sourceUrl: result.sourceUrl,
+    sourceName: result.sourceName ?? "",
+    notes: d.notes ?? "",
   };
 }
