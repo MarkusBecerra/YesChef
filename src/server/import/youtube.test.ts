@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_DRAFT, type RecipeDraft } from "./draft";
 import { VideoUnavailable } from "./llm/provider";
 import type { PageMeta } from "./page-meta";
-import { importYouTubeVideo, watchUrl, youtubeDescription, youtubeVideoId } from "./youtube";
+import { importYouTubeVideo, watchUrl, youtubeDescription, youtubeLengthSeconds, youtubeVideoId } from "./youtube";
 
 const watch = vi.fn<(input: unknown) => Promise<RecipeDraft>>();
 const readText = vi.fn<(input: unknown) => Promise<RecipeDraft>>();
@@ -59,6 +59,12 @@ describe("youtubeDescription", () => {
     expect(youtubeDescription("<html></html>")).toBeNull();
     expect(youtubeDescription('{"shortDescription":"   "}')).toBeNull();
   });
+
+  it("reads the runtime, which decides which model watches", () => {
+    expect(youtubeLengthSeconds('{"lengthSeconds":"822"}')).toBe(822);
+    expect(youtubeLengthSeconds('{"lengthSeconds":"0"}')).toBeNull();
+    expect(youtubeLengthSeconds("<html></html>")).toBeNull();
+  });
 });
 
 const META: PageMeta = {
@@ -92,15 +98,18 @@ describe("importYouTubeVideo", () => {
       videoUrl: "https://www.youtube.com/watch?v=Y9LX8QylWwo",
       title: META.title,
       description: META.description,
+      durationSeconds: null,
     });
     expect(readText).not.toHaveBeenCalled();
     expect(result).toMatchObject({ method: "video", imageUrl: META.imageUrl, sourceName: "YouTube" });
     expect(result?.warnings[0]).toMatch(/watching the video/);
   });
 
-  it("prefers the inlined description over the truncated meta one", async () => {
-    await importYouTubeVideo(args('{"shortDescription":"Full recipe below: 200g noodles"}'));
-    expect(watch).toHaveBeenCalledWith(expect.objectContaining({ description: "Full recipe below: 200g noodles" }));
+  it("prefers the inlined description over the truncated meta one, and passes the runtime along", async () => {
+    await importYouTubeVideo(args('{"shortDescription":"Full recipe below: 200g noodles","lengthSeconds":"58"}'));
+    expect(watch).toHaveBeenCalledWith(
+      expect.objectContaining({ description: "Full recipe below: 200g noodles", durationSeconds: 58 }),
+    );
   });
 
   it("falls back to the description when watching fails", async () => {

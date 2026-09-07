@@ -19,6 +19,8 @@ export type VideoInput = {
   videoUrl: string;
   title: string | null;
   description: string | null;
+  /** Runtime, when the host told us: it decides which model is worth pointing at the video. */
+  durationSeconds: number | null;
 };
 
 export interface VideoRecipeExtractor {

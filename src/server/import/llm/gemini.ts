@@ -16,6 +16,21 @@ import {
 const DEFAULT_MODEL = "gemini-3.6-flash";
 /** Watching costs roughly a hundred tokens a second, so cap what we hand over. */
 const MAX_VIDEO_SECONDS = 900;
+/**
+ * Which model watches. Measured on the same two videos: the lite model reads a 50-second
+ * short in under two seconds but takes a minute and a half over a 14-minute one, and the
+ * flash model is the other way round. Shorts are the reason this path exists, so split on
+ * length rather than paying either penalty.
+ */
+const SHORT_VIDEO_MODEL = "gemini-3.5-flash-lite";
+const LONG_VIDEO_MODEL = "gemini-3.6-flash";
+const SHORT_VIDEO_SECONDS = 240;
+
+function videoModel(durationSeconds: number | null): string {
+  const override = process.env.LLM_VIDEO_MODEL?.trim();
+  if (override) return override;
+  return durationSeconds !== null && durationSeconds <= SHORT_VIDEO_SECONDS ? SHORT_VIDEO_MODEL : LONG_VIDEO_MODEL;
+}
 /** Total wall clock for watching, leaving the route room to fall back to the description. */
 const VIDEO_BUDGET_MS = 40_000;
 /** A second attempt is only worth starting with this much of the budget left. */
@@ -77,10 +92,10 @@ export function createGeminiExtractor(): RecipeExtractor {
  */
 export function createGeminiVideoExtractor(): VideoRecipeExtractor {
   const ai = client();
-  const model = process.env.LLM_VIDEO_MODEL?.trim() || DEFAULT_MODEL;
   return {
-    name: `gemini-video:${model}`,
+    name: "gemini-video",
     async extract(input: VideoInput): Promise<RecipeDraft> {
+      const model = videoModel(input.durationSeconds);
       const deadline = Date.now() + VIDEO_BUDGET_MS;
       const call = () =>
         ai.models.generateContent({

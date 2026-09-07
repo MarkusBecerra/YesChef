@@ -49,6 +49,13 @@ export function youtubeDescription(html: string): string | null {
   }
 }
 
+/** Runtime in seconds, from the same inlined player payload. */
+export function youtubeLengthSeconds(html: string): number | null {
+  const match = /"lengthSeconds":"(\d+)"/.exec(html);
+  const seconds = match ? Number(match[1]) : NaN;
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
 /**
  * YouTube (Shorts included), best first:
  *  1. Gemini watches the video - the only thing that works when the recipe is
@@ -79,7 +86,12 @@ export async function importYouTubeVideo(args: {
   if (watcher) {
     let draft: RecipeDraft | null = null;
     try {
-      draft = await watcher.extract({ videoUrl: watchUrl(args.videoId), title: args.meta.title, description });
+      draft = await watcher.extract({
+        videoUrl: watchUrl(args.videoId),
+        title: args.meta.title,
+        description,
+        durationSeconds: youtubeLengthSeconds(args.html),
+      });
     } catch (err) {
       console.error("Video extraction failed", err);
       warnings.push(err instanceof VideoUnavailable ? err.message : "Couldn't watch the video all the way through.");
