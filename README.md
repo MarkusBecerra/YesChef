@@ -6,6 +6,7 @@ A small, mobile-first recipe log: track what I've actually cooked, how it went, 
 
 - Recipe database: ingredients, steps, times, servings/yield, difficulty, category, tags, source, cost, notes, photo
 - Import from a link: schema.org recipe data first, an AI parser (Claude or Gemini) for unstructured pages, manual cleanup before saving
+- **Import by talking**: describe a recipe you know by heart and the app writes it down, then asks about whatever you left out
 - Cook log: log each cook with a date, optional rating, and notes; cook count and history per recipe
 - Search across title, ingredients, and tags; filter by favorites, difficulty, tag; seven sort orders
 - Accounts with a hard seat cap (6 by default) and single-use invite codes only the owner can see
@@ -46,7 +47,11 @@ The first visit offers to create the owner account: use `OWNER_INVITE_CODE` from
 
 Upgrading an install that predates accounts: `APP_PASSPHRASE` doubles as both `AUTH_SECRET` and the setup code, so nothing has to change before the deploy. Sign up once with it - the first account created claims every recipe already in the database - then switch to the two new variables.
 
-To try link import on pages without structured recipe data, add `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`) to `.env.local`. Recipe blogs with schema.org data import without any key.
+To try link import on pages without structured recipe data - or import by talking, which is always AI - add `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`) to `.env.local`. Recipe blogs with schema.org data import without any key.
+
+### Importing by talking
+
+"Speak it" on the import screen records a recipe the way you'd tell it to a friend. Where the browser has dictation of its own (Chrome, Edge, Safari) it does the transcribing, so no audio reaches this app and no Gemini key is needed - note that those browsers generally do it by sending the audio to Google's or Apple's speech service, the same one behind the keyboard's microphone button, rather than on the device. Browsers without dictation record audio and post it to `/api/v1/import/voice/audio`, which needs `GEMINI_API_KEY` - no Claude model takes audio. Either way the transcript is shown for correction first, and after the recipe is written the model asks about the things a cook would need that never got said (quantities, oven temperature, servings); answer what you know, skip the rest, and finish it in the form.
 
 ## Scripts
 
@@ -82,6 +87,8 @@ All endpoints live under `/api/v1` and return JSON. Authenticate with the sessio
 | GET | `/tags` | Tags in use with counts |
 | POST | `/import` | `{ url }` → a recipe draft to review |
 | POST | `/import/text` | `{ text, sourceUrl? }` → a recipe draft from pasted text |
+| POST | `/import/voice` | `{ transcript, previous?, answers? }` → a draft plus follow-up questions |
+| POST | `/import/voice/audio` | multipart `audio` → `{ transcript }` |
 
 ## Deploying to Vercel
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { RecipeForm } from "@/components/recipe-form";
+import { VoiceImport } from "@/components/voice-import";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
@@ -15,13 +16,15 @@ const METHOD_LABEL: Record<ImportResult["method"], string> = {
   llm: "AI",
   text: "AI",
   video: "AI watching the video",
+  voice: "AI writing down what you said",
   metadata: "page details only",
 };
 
-type Mode = "link" | "text";
+type Mode = "link" | "voice" | "text";
 
 const MODES: { id: Mode; label: string }[] = [
   { id: "link", label: "Link" },
+  { id: "voice", label: "Speak it" },
   { id: "text", label: "Paste text" },
 ];
 
@@ -60,7 +63,9 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
             return `from ${result.sourceUrl}`;
           }
         })()
-      : "from your text";
+      : result.method === "voice"
+        ? "from what you said"
+        : "from your text";
     return (
       <RecipeForm
         mode="create"
@@ -96,27 +101,53 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
 
   const empty = mode === "link" ? url.trim() === "" : text.trim() === "";
 
+  const modePicker = (
+    <div className="flex gap-2">
+      {MODES.map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          onClick={() => {
+            setMode(m.id);
+            setError(null);
+          }}
+          aria-pressed={mode === m.id}
+          className={cn(
+            "inline-flex h-9 items-center rounded-full border px-4 text-sm transition",
+            mode === m.id ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper-raised text-ink-muted hover:bg-line-soft",
+          )}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const manualLink = (
+    <p className="text-center text-sm text-ink-muted">
+      Or{" "}
+      <Link href="/recipes/new" className="font-medium text-accent underline-offset-4 hover:underline">
+        enter it manually
+      </Link>
+      .
+    </p>
+  );
+
+  // Speaking is its own flow - it records, transcribes and asks its own questions before
+  // there is anything to submit - so it doesn't live inside the link/text form.
+  if (mode === "voice") {
+    return (
+      <div className="flex flex-col gap-5">
+        {modePicker}
+        <VoiceImport onResult={setResult} />
+        {manualLink}
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-5">
-      <div className="flex gap-2">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => {
-              setMode(m.id);
-              setError(null);
-            }}
-            aria-pressed={mode === m.id}
-            className={cn(
-              "inline-flex h-9 items-center rounded-full border px-4 text-sm transition",
-              mode === m.id ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper-raised text-ink-muted hover:bg-line-soft",
-            )}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
+      {modePicker}
 
       {mode === "link" ? (
         <Field
@@ -161,13 +192,7 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
       <Button type="submit" size="lg" disabled={busy || empty}>
         {busy ? (mode === "link" ? "Reading the page…" : "Reading your text…") : "Import"}
       </Button>
-      <p className="text-center text-sm text-ink-muted">
-        Or{" "}
-        <Link href="/recipes/new" className="font-medium text-accent underline-offset-4 hover:underline">
-          enter it manually
-        </Link>
-        .
-      </p>
+      {manualLink}
     </form>
   );
 }

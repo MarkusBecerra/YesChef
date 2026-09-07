@@ -10,11 +10,11 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # YesChef project notes
 
-Invite-only recipe log for the owner and a few friends (6 accounts by default). Design doc decisions: Next.js 16 on Vercel, Turso (libSQL) + Vercel Blob in prod, local SQLite file + `data/uploads/` in dev, Claude (pluggable to Gemini) for link import, passphrase gate instead of auth.
+Invite-only recipe log for the owner and a few friends (6 accounts by default). Design doc decisions: Next.js 16 on Vercel, Turso (libSQL) + Vercel Blob in prod, local SQLite file + `data/uploads/` in dev, Claude (pluggable to Gemini) for link, text and spoken-recipe import.
 
 ## Layout
 
-- `src/server/` - domain layer, **no Next.js imports**: `db/` (Drizzle schema + client), `recipes/`, `cooks/`, `tags/` (services + Zod contracts), `storage/` (photo adapters), `import/` (URL import, JSON-LD, LLM providers), `auth/` (`session.ts` token signing, `password.ts`, `service.ts` accounts + invites).
+- `src/server/` - domain layer, **no Next.js imports**: `db/` (Drizzle schema + client), `recipes/`, `cooks/`, `tags/` (services + Zod contracts), `storage/` (photo adapters), `import/` (URL, text and voice import, JSON-LD, LLM providers), `auth/` (`session.ts` token signing, `password.ts`, `service.ts` accounts + invites).
 - `src/app/api/v1/` - JSON route handlers over the domain layer. Also the contract a native client would use.
 - `src/app/(app)/` - gated pages (`force-dynamic`), including `account/`; `src/app/login` and `src/app/signup` are the public ones; `src/proxy.ts` is the gate.
 - `src/components/` - UI; `src/lib/` - client-safe helpers (`api.ts` fetch wrapper, formatting, form<->payload mapping) **except `current-user.ts`, which is server-only**: it is the one place Next's `cookies()`/`headers()` meet the session logic, and every page and route handler gets its user from it.
@@ -39,4 +39,6 @@ Invite-only recipe log for the owner and a few friends (6 accounts by default). 
 - Locally served photos (`/api/v1/uploads/...`) bypass `next/image` optimisation because the optimiser's fetch carries no session cookie.
 - Tests run against an in-memory libSQL database with the real migrations (`src/test/db.ts`).
 - Claude auth: `src/server/import/llm/auth.ts` picks an API key first, else Workload Identity Federation (Vercel OIDC token with audience `https://api.anthropic.com`, exchanged by the SDK). The identity token is only available inside a request on Vercel, so never fetch it at module scope.
-- Import providers split by job: text extraction follows `LLM_PROVIDER` (Claude by default here), but watching a YouTube video is Gemini-only - `getVideoExtractor()` keys off `GEMINI_API_KEY` alone, because no Claude model takes video.
+- Import providers split by job: text extraction follows `LLM_PROVIDER` (Claude by default here), but watching a YouTube video is Gemini-only - `getVideoExtractor()` keys off `GEMINI_API_KEY` alone, because no Claude model takes video. Transcribing a recording is Gemini-only for the same reason (`getAudioTranscriber()`); the spoken-recipe *extraction* is a normal text call and follows `LLM_PROVIDER` like the rest.
+- Voice import prefers the browser's own dictation (`SpeechRecognition`), so on Chrome/Edge/Safari no audio reaches our server and no Gemini key is needed. That is not the same as on-device: Chromium and Safari generally hand the audio to Google's or Apple's speech service to transcribe. Uploading audio to `/api/v1/import/voice/audio` is the fallback for browsers without dictation.
+- The voice extractor returns the draft *plus* `followUps`; the questions are answered before the form opens, and the answers are sent back with the first draft as `previous` so the model edits rather than starts over.
