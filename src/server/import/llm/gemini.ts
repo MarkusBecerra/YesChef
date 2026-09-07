@@ -8,6 +8,7 @@ import {
   VIDEO_SYSTEM_PROMPT,
   type ExtractInput,
   type RecipeExtractor,
+  VideoUnavailable,
   type VideoInput,
   type VideoRecipeExtractor,
 } from "./provider";
@@ -20,10 +21,18 @@ const VIDEO_BUDGET_MS = 40_000;
 /** A second attempt is only worth starting with this much of the budget left. */
 const MIN_RETRY_MS = 15_000;
 
-/** The free tier answers a busy moment with 503; that is worth one more try, a wrong prompt isn't. */
+/** The free tier answers a busy moment with 503; that is worth one more try straight away. */
 function isTransient(err: unknown): boolean {
   const status = (err as { status?: unknown }).status;
-  return status === 429 || status === 500 || status === 503;
+  return status === 500 || status === 503;
+}
+
+/**
+ * 429 is the free tier's daily allowance for the model, not a blip - it comes with a retry
+ * delay measured in seconds to hours, so say so instead of burning another request on it.
+ */
+function isQuota(err: unknown): boolean {
+  return (err as { status?: unknown }).status === 429;
 }
 
 const responseConfig = {
@@ -95,6 +104,7 @@ export function createGeminiVideoExtractor(): VideoRecipeExtractor {
       try {
         return parseDraft((await call()).text);
       } catch (err) {
+        if (isQuota(err)) throw new VideoUnavailable("Gemini's quota for watching videos is used up for now - try again later, or add billing to the Gemini key.");
         if (!isTransient(err) || deadline - Date.now() < MIN_RETRY_MS) throw err;
         console.warn("Retrying video extraction", err);
         return parseDraft((await call()).text);

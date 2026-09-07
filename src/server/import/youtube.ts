@@ -1,5 +1,6 @@
 import { draftHasContent, type ImportResult, type RecipeDraft } from "./draft";
 import { getRecipeExtractor, getVideoExtractor } from "./llm";
+import { VideoUnavailable } from "./llm/provider";
 import type { PageMeta } from "./page-meta";
 
 const ID = "[A-Za-z0-9_-]{11}";
@@ -81,7 +82,7 @@ export async function importYouTubeVideo(args: {
       draft = await watcher.extract({ videoUrl: watchUrl(args.videoId), title: args.meta.title, description });
     } catch (err) {
       console.error("Video extraction failed", err);
-      warnings.push("Couldn't watch the video all the way through.");
+      warnings.push(err instanceof VideoUnavailable ? err.message : "Couldn't watch the video all the way through.");
     }
     if (draft && draftHasContent(draft)) {
       warnings.unshift("Read by AI watching the video. Double-check quantities and steps.");

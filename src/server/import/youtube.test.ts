@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_DRAFT, type RecipeDraft } from "./draft";
+import { VideoUnavailable } from "./llm/provider";
 import type { PageMeta } from "./page-meta";
 import { importYouTubeVideo, watchUrl, youtubeDescription, youtubeVideoId } from "./youtube";
 
@@ -12,6 +13,9 @@ vi.mock("./llm", () => ({
   getVideoExtractor: () => getVideoExtractor(),
   getRecipeExtractor: () => getRecipeExtractor(),
 }));
+
+const DESCRIPTION_HTML =
+  '{"shortDescription":"INGREDIENTS\\n8 oz rice noodles\\n2 eggs\\n\\nMETHOD\\nSoak the noodles, then fry everything together in a hot wok."}';
 
 describe("youtubeVideoId", () => {
   it("finds the id in every shape a share sheet produces", () => {
@@ -102,17 +106,23 @@ describe("importYouTubeVideo", () => {
   it("falls back to the description when watching fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     watch.mockRejectedValue(new Error("timed out"));
-    const html = '{"shortDescription":"INGREDIENTS\\n8 oz rice noodles\\n2 eggs\\n\\nMETHOD\\nSoak the noodles, then fry everything together in a hot wok."}';
-    const result = await importYouTubeVideo(args(html));
+    const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
     expect(readText).toHaveBeenCalled();
     expect(result?.method).toBe("llm");
     expect(result?.warnings.join(" ")).toMatch(/Couldn't watch the video/);
   });
 
+  it("passes a provider's own explanation through as the warning", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    watch.mockRejectedValue(new VideoUnavailable("Gemini's quota is used up for now."));
+    const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
+    expect(result?.method).toBe("llm");
+    expect(result?.warnings).toContain("Gemini's quota is used up for now.");
+  });
+
   it("says what's missing when no Gemini key is configured", async () => {
     getVideoExtractor.mockReturnValue(null);
-    const html = '{"shortDescription":"INGREDIENTS\\n8 oz rice noodles\\n2 eggs\\n\\nMETHOD\\nSoak the noodles, then fry everything in a hot wok."}';
-    const result = await importYouTubeVideo(args(html));
+    const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
     expect(result?.method).toBe("llm");
     expect(result?.warnings[0]).toMatch(/GEMINI_API_KEY/);
   });

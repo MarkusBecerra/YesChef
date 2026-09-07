@@ -26,6 +26,9 @@ export interface VideoRecipeExtractor {
   extract(input: VideoInput): Promise<RecipeDraft>;
 }
 
+/** A video the provider wouldn't read, for a reason the cook should hear verbatim. */
+export class VideoUnavailable extends Error {}
+
 /** How the draft's fields are filled in, shared by every extractor. */
 const DRAFT_FIELD_RULES = `- ingredients: one entry per ingredient, including quantity and unit (e.g. "2 cups all-purpose flour").
 - steps: one entry per step, in order, without numbering. A method run together as prose becomes one step per action.
