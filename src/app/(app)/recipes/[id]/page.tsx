@@ -8,6 +8,7 @@ import { IngredientList } from "@/components/ingredient-list";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { RecipePhoto } from "@/components/recipe-photo";
 import { Pill } from "@/components/ui/pill";
+import { getCurrentUser, requireUser } from "@/lib/current-user";
 import { DIFFICULTY_LABELS, formatCost, formatMinutes, formatMoney, plural } from "@/lib/format";
 import { getRecipe } from "@/server/recipes/service";
 
@@ -18,7 +19,8 @@ function parseId(raw: string): number | null {
 
 export async function generateMetadata(props: PageProps<"/recipes/[id]">): Promise<Metadata> {
   const id = parseId((await props.params).id);
-  const recipe = id ? await getRecipe(id) : null;
+  const user = await getCurrentUser();
+  const recipe = id && user ? await getRecipe(user.id, id) : null;
   return { title: recipe?.title ?? "Recipe" };
 }
 
@@ -35,9 +37,10 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 }
 
 export default async function RecipePage(props: PageProps<"/recipes/[id]">) {
+  const user = await requireUser();
   const id = parseId((await props.params).id);
   if (!id) notFound();
-  const recipe = await getRecipe(id);
+  const recipe = await getRecipe(user.id, id);
   if (!recipe) notFound();
 
   const prep = formatMinutes(recipe.prepMinutes);

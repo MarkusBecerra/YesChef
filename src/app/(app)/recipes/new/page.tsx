@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RecipeForm } from "@/components/recipe-form";
+import { requireUser } from "@/lib/current-user";
 import { listCategories } from "@/server/recipes/service";
 import { listTags } from "@/server/tags/service";
 
 export const metadata: Metadata = { title: "New recipe" };
 
 export default async function NewRecipePage() {
-  const [tags, categories] = await Promise.all([listTags(), listCategories()]);
+  const user = await requireUser();
+  const [tags, categories] = await Promise.all([listTags(user.id), listCategories(user.id)]);
   return (
     <div className="flex flex-col gap-5">
       <h1 className="font-display text-3xl font-semibold tracking-tight">New recipe</h1>

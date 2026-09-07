@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CookLogForm } from "@/components/cook-log-form";
+import { requireUser } from "@/lib/current-user";
 import { getRecipe } from "@/server/recipes/service";
 
 export const metadata: Metadata = { title: "Log a cook" };
 
 export default async function LogCookPage(props: PageProps<"/recipes/[id]/log">) {
+  const user = await requireUser();
   const id = Number((await props.params).id);
-  const recipe = Number.isInteger(id) && id > 0 ? await getRecipe(id) : null;
+  const recipe = Number.isInteger(id) && id > 0 ? await getRecipe(user.id, id) : null;
   if (!recipe) notFound();
 
   return (

@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
+import { requireApiUser } from "@/lib/current-user";
 import { jsonError, withErrorHandling } from "@/lib/http";
 import { parseBody } from "@/lib/validate";
 import { ImportError, importRecipeFromUrl } from "@/server/import";
@@ -11,6 +12,7 @@ const bodySchema = z.object({ url: z.string().trim().min(1, "Paste a link first"
 
 /** POST { url } -> a recipe draft to review, never a saved recipe. */
 export const POST = withErrorHandling(async (request: NextRequest) => {
+  await requireApiUser();
   const { url } = await parseBody(bodySchema, request);
   try {
     return Response.json(await importRecipeFromUrl(url));

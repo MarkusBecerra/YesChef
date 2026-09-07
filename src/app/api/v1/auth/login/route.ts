@@ -1,41 +1,27 @@
-import { cookies } from "next/headers";
-import {
-  createSessionToken,
-  getConfiguredPassphrase,
-  SESSION_COOKIE,
-  SESSION_MAX_AGE_SECONDS,
-  verifyPassphrase,
-} from "@/server/auth/session";
-import { jsonError, readJson, withErrorHandling } from "@/lib/http";
+import { jsonError, withErrorHandling } from "@/lib/http";
+import { setSessionCookie } from "@/lib/current-user";
+import { parseBody } from "@/lib/validate";
+import { signIn } from "@/server/auth/service";
+import { createSessionToken, getAuthSecret } from "@/server/auth/session";
+import { signInSchema } from "@/server/auth/types";
 
 /**
- * POST { passphrase } -> sets the session cookie and returns the token so a
+ * POST { email, password } -> sets the session cookie and returns the token so a
  * native client can send it as `Authorization: Bearer <token>` instead.
  */
 export const POST = withErrorHandling(async (request: Request) => {
-  const configured = getConfiguredPassphrase();
-  if (!configured) return jsonError(503, "APP_PASSPHRASE is not configured on the server");
+  if (!getAuthSecret()) return jsonError(503, "AUTH_SECRET is not configured on the server");
 
-  const body = await readJson<{ passphrase?: unknown }>(request);
-  const candidate = typeof body.passphrase === "string" ? body.passphrase : "";
-
-  if (!(await verifyPassphrase(candidate))) {
-    // Slow down brute force a little; there is only one credential to guess.
-    await new Promise((r) => setTimeout(r, 750));
-    return jsonError(401, "Wrong passphrase");
+  const input = await parseBody(signInSchema, request);
+  const result = await signIn(input);
+  if (!result) {
+    // Hashing already costs a fraction of a second; this just rounds off the difference
+    // between "no such account" and "wrong password".
+    await new Promise((r) => setTimeout(r, 400));
+    return jsonError(401, "Wrong email or password");
   }
 
-  const token = await createSessionToken(configured);
-  const cookieStore = await cookies();
-  cookieStore.set({
-    name: SESSION_COOKIE,
-    value: token,
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
-
-  return Response.json({ ok: true, token });
+  const token = await createSessionToken({ userId: result.account.id, tokenVersion: result.tokenVersion });
+  await setSessionCookie(token);
+  return Response.json({ ok: true, token, user: result.account });
 });

@@ -82,11 +82,12 @@ async function tagsByRecipe(db: Executor, recipeIds: number[]): Promise<Map<numb
 
 /* ---------- reads ---------- */
 
-export async function listRecipes(query: RecipeListQuery = {}): Promise<RecipeSummary[]> {
+export async function listRecipes(userId: number, query: RecipeListQuery = {}): Promise<RecipeSummary[]> {
   const db = getDb();
   const { q, tag, category, difficulty, favorite, sort } = recipeListQuerySchema.parse(query);
 
-  const where: SQL[] = [];
+  // Every read is scoped to one cook's shelf; nothing in the app ever lists across accounts.
+  const where: SQL[] = [eq(recipes.userId, userId)];
   if (q) {
     where.push(
       or(
@@ -149,7 +150,7 @@ export async function listRecipes(query: RecipeListQuery = {}): Promise<RecipeSu
   return rows.map((r) => toSummary(r, tagMap.get(r.id) ?? []));
 }
 
-export async function getRecipe(id: number): Promise<RecipeDetail | null> {
+export async function getRecipe(userId: number, id: number): Promise<RecipeDetail | null> {
   const db = getDb();
   const [row] = await db
     .select({
@@ -162,7 +163,7 @@ export async function getRecipe(id: number): Promise<RecipeDetail | null> {
       costAmount: recipes.costAmount,
     })
     .from(recipes)
-    .where(eq(recipes.id, id))
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
     .limit(1);
   if (!row) return null;
 
@@ -235,21 +236,21 @@ async function deleteChildren(tx: Executor, recipeId: number): Promise<void> {
   await tx.delete(recipeTags).where(eq(recipeTags.recipeId, recipeId));
 }
 
-export async function createRecipe(input: ParsedRecipeInput): Promise<RecipeDetail> {
+export async function createRecipe(userId: number, input: ParsedRecipeInput): Promise<RecipeDetail> {
   const db = getDb();
   const now = nowIso();
   const id = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(recipes)
-      .values({ ...recipeColumns(input), isFavorite: input.isFavorite ?? false, createdAt: now, updatedAt: now })
+      .values({ ...recipeColumns(input), userId, isFavorite: input.isFavorite ?? false, createdAt: now, updatedAt: now })
       .returning({ id: recipes.id });
     await writeChildren(tx, row.id, input);
     return row.id;
   });
-  return (await getRecipe(id))!;
+  return (await getRecipe(userId, id))!;
 }
 
-export async function updateRecipe(id: number, input: ParsedRecipeInput): Promise<RecipeDetail | null> {
+export async function updateRecipe(userId: number, id: number, input: ParsedRecipeInput): Promise<RecipeDetail | null> {
   const db = getDb();
   const updated = await db.transaction(async (tx) => {
     const rows = await tx
@@ -259,37 +260,49 @@ export async function updateRecipe(id: number, input: ParsedRecipeInput): Promis
         ...(input.isFavorite !== undefined ? { isFavorite: input.isFavorite } : {}),
         updatedAt: nowIso(),
       })
-      .where(eq(recipes.id, id))
+      .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
       .returning({ id: recipes.id });
     if (rows.length === 0) return false;
     await deleteChildren(tx, id);
     await writeChildren(tx, id, input);
     return true;
   });
-  return updated ? getRecipe(id) : null;
+  return updated ? getRecipe(userId, id) : null;
 }
 
-export async function patchRecipe(id: number, patch: RecipePatch): Promise<RecipeDetail | null> {
+export async function patchRecipe(userId: number, id: number, patch: RecipePatch): Promise<RecipeDetail | null> {
   const db = getDb();
   if (patch.isFavorite !== undefined) {
     // Favouriting is not an edit: leave updatedAt alone so "recently updated" ordering holds.
-    const rows = await db.update(recipes).set({ isFavorite: patch.isFavorite }).where(eq(recipes.id, id)).returning({ id: recipes.id });
+    const rows = await db
+      .update(recipes)
+      .set({ isFavorite: patch.isFavorite })
+      .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+      .returning({ id: recipes.id });
     if (rows.length === 0) return null;
   }
-  return getRecipe(id);
+  return getRecipe(userId, id);
 }
 
-export async function setRecipePhoto(id: number, photoUrl: string | null): Promise<RecipeDetail | null> {
+export async function setRecipePhoto(userId: number, id: number, photoUrl: string | null): Promise<RecipeDetail | null> {
   const db = getDb();
-  const rows = await db.update(recipes).set({ photoUrl, updatedAt: nowIso() }).where(eq(recipes.id, id)).returning({ id: recipes.id });
-  return rows.length ? getRecipe(id) : null;
+  const rows = await db
+    .update(recipes)
+    .set({ photoUrl, updatedAt: nowIso() })
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+    .returning({ id: recipes.id });
+  return rows.length ? getRecipe(userId, id) : null;
 }
 
 /** Deletes the recipe and everything hanging off it. Returns the photo URL so storage can clean up. */
-export async function deleteRecipe(id: number): Promise<{ photoUrl: string | null } | null> {
+export async function deleteRecipe(userId: number, id: number): Promise<{ photoUrl: string | null } | null> {
   const db = getDb();
   return db.transaction(async (tx) => {
-    const [existing] = await tx.select({ photoUrl: recipes.photoUrl }).from(recipes).where(eq(recipes.id, id)).limit(1);
+    const [existing] = await tx
+      .select({ photoUrl: recipes.photoUrl })
+      .from(recipes)
+      .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+      .limit(1);
     if (!existing) return null;
     await deleteChildren(tx, id);
     await tx.delete(cookLogs).where(eq(cookLogs.recipeId, id));
@@ -299,12 +312,12 @@ export async function deleteRecipe(id: number): Promise<{ photoUrl: string | nul
 }
 
 /** Distinct categories in use, for form suggestions. */
-export async function listCategories(): Promise<string[]> {
+export async function listCategories(userId: number): Promise<string[]> {
   const db = getDb();
   const rows = await db
     .selectDistinct({ category: recipes.category })
     .from(recipes)
-    .where(sql`${recipes.category} is not null and ${recipes.category} != ''`)
+    .where(and(eq(recipes.userId, userId), sql`${recipes.category} is not null and ${recipes.category} != ''`))
     .orderBy(sql`${recipes.category} collate nocase`);
   return rows.map((r) => r.category!).filter(Boolean);
 }

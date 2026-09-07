@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { requireUser } from "@/lib/current-user";
 
 // Everything behind the gate is personal, live data: never prerender it at build time.
 export const dynamic = "force-dynamic";
 
-export default function AppLayout({ children }: LayoutProps<"/">) {
+export default async function AppLayout({ children }: LayoutProps<"/">) {
+  const user = await requireUser();
+  const initial = user.name.trim().charAt(0).toUpperCase() || "?";
+
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-line bg-paper/90 pt-[env(safe-area-inset-top)] backdrop-blur">
@@ -15,7 +18,14 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </Link>
           <div className="flex items-center gap-1">
             <ThemeToggle />
-            <SignOutButton />
+            <Link
+              href="/account"
+              aria-label={`Account (${user.name})`}
+              title={user.name}
+              className="inline-flex size-9 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent transition hover:brightness-95"
+            >
+              {initial}
+            </Link>
           </div>
         </div>
       </header>

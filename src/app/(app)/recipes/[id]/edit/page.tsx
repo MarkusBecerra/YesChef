@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { RecipeForm } from "@/components/recipe-form";
+import { getCurrentUser, requireUser } from "@/lib/current-user";
 import { valuesFromRecipe } from "@/lib/recipe-form-values";
 import { getRecipe, listCategories } from "@/server/recipes/service";
 import { listTags } from "@/server/tags/service";
@@ -12,14 +13,16 @@ function parseId(raw: string): number | null {
 
 export async function generateMetadata(props: PageProps<"/recipes/[id]/edit">): Promise<Metadata> {
   const id = parseId((await props.params).id);
-  const recipe = id ? await getRecipe(id) : null;
+  const user = await getCurrentUser();
+  const recipe = id && user ? await getRecipe(user.id, id) : null;
   return { title: recipe ? `Edit ${recipe.title}` : "Edit recipe" };
 }
 
 export default async function EditRecipePage(props: PageProps<"/recipes/[id]/edit">) {
+  const user = await requireUser();
   const id = parseId((await props.params).id);
   if (!id) notFound();
-  const [recipe, tags, categories] = await Promise.all([getRecipe(id), listTags(), listCategories()]);
+  const [recipe, tags, categories] = await Promise.all([getRecipe(user.id, id), listTags(user.id), listCategories(user.id)]);
   if (!recipe) notFound();
 
   return (
