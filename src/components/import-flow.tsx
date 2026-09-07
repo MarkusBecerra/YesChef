@@ -4,19 +4,32 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { RecipeForm } from "@/components/recipe-form";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { valuesFromImport } from "@/lib/recipe-form-values";
 import type { ImportResult } from "@/server/import/draft";
 
 const METHOD_LABEL: Record<ImportResult["method"], string> = {
   jsonld: "structured recipe data",
   llm: "AI",
+  text: "AI",
+  video: "AI watching the video",
   metadata: "page details only",
 };
 
+type Mode = "link" | "text";
+
+const MODES: { id: Mode; label: string }[] = [
+  { id: "link", label: "Link" },
+  { id: "text", label: "Paste text" },
+];
+
 export function ImportFlow({ existingTags, existingCategories }: { existingTags: string[]; existingCategories: string[] }) {
+  const [mode, setMode] = useState<Mode>("link");
   const [url, setUrl] = useState("");
+  const [text, setText] = useState("");
+  const [textSource, setTextSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -25,8 +38,12 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
     e.preventDefault();
     setBusy(true);
     setError(null);
+    const request =
+      mode === "link"
+        ? { path: "/api/v1/import", body: { url } }
+        : { path: "/api/v1/import/text", body: { text, sourceUrl: textSource.trim() || undefined } };
     try {
-      setResult(await api<ImportResult>("/api/v1/import", { method: "POST", body: JSON.stringify({ url }) }));
+      setResult(await api<ImportResult>(request.path, { method: "POST", body: JSON.stringify(request.body) }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Import failed");
     } finally {
@@ -35,13 +52,15 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
   }
 
   if (result) {
-    const host = (() => {
-      try {
-        return new URL(result.sourceUrl).hostname.replace(/^www\./, "");
-      } catch {
-        return result.sourceUrl;
-      }
-    })();
+    const from = result.sourceUrl
+      ? (() => {
+          try {
+            return `from ${new URL(result.sourceUrl).hostname.replace(/^www\./, "")}`;
+          } catch {
+            return `from ${result.sourceUrl}`;
+          }
+        })()
+      : "from your text";
     return (
       <RecipeForm
         mode="create"
@@ -57,7 +76,7 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
             )}
             <div className="flex flex-col gap-1">
               <p>
-                <span className="font-semibold">Imported from {host}</span> via {METHOD_LABEL[result.method]}. Check it over, then save.
+                <span className="font-semibold">Imported {from}</span> via {METHOD_LABEL[result.method]}. Check it over, then save.
                 {result.imageUrl && " The photo will be attached."}
               </p>
               {result.warnings.map((w) => (
@@ -66,7 +85,7 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
                 </p>
               ))}
               <button type="button" onClick={() => setResult(null)} className="self-start text-accent underline-offset-4 hover:underline">
-                Try a different link
+                Start over
               </button>
             </div>
           </div>
@@ -75,24 +94,72 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
     );
   }
 
+  const empty = mode === "link" ? url.trim() === "" : text.trim() === "";
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-5">
-      <Field label="Recipe link" htmlFor="url" hint="Recipe blogs work best. Instagram and Pinterest are hit-or-miss because they hide content behind a login." error={error ?? undefined}>
-        <Input
-          id="url"
-          type="url"
-          inputMode="url"
-          autoFocus
-          required
-          placeholder="https://…"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          autoComplete="off"
-          autoCapitalize="none"
-        />
-      </Field>
-      <Button type="submit" size="lg" disabled={busy || url.trim() === ""}>
-        {busy ? "Reading the page…" : "Import"}
+      <div className="flex gap-2">
+        {MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => {
+              setMode(m.id);
+              setError(null);
+            }}
+            aria-pressed={mode === m.id}
+            className={cn(
+              "inline-flex h-9 items-center rounded-full border px-4 text-sm transition",
+              mode === m.id ? "border-accent bg-accent-soft text-accent" : "border-line bg-paper-raised text-ink-muted hover:bg-line-soft",
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === "link" ? (
+        <Field
+          label="Recipe link"
+          htmlFor="url"
+          hint="Recipe blogs and YouTube work best. Instagram and Pinterest hide their content behind a login - copy the caption and use Paste text."
+          error={error ?? undefined}
+        >
+          <Input
+            id="url"
+            type="url"
+            inputMode="url"
+            autoFocus
+            required
+            placeholder="https://…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="none"
+          />
+        </Field>
+      ) : (
+        <>
+          <Field label="Recipe text" htmlFor="text" hint="An Instagram caption, a message, a photo of a recipe card you've typed out - anything with the recipe in it." error={error ?? undefined}>
+            <Textarea id="text" autoFocus required rows={10} className="min-h-56" placeholder="Paste the caption or post here…" value={text} onChange={(e) => setText(e.target.value)} />
+          </Field>
+          <Field label="Where it came from" htmlFor="text-source" hint="Optional. The post's link, so the recipe remembers where you found it.">
+            <Input
+              id="text-source"
+              type="url"
+              inputMode="url"
+              placeholder="https://…"
+              value={textSource}
+              onChange={(e) => setTextSource(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="none"
+            />
+          </Field>
+        </>
+      )}
+
+      <Button type="submit" size="lg" disabled={busy || empty}>
+        {busy ? (mode === "link" ? "Reading the page…" : "Reading your text…") : "Import"}
       </Button>
       <p className="text-center text-sm text-ink-muted">
         Or{" "}

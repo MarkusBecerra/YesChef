@@ -9,7 +9,7 @@ export default async function ImportRecipePage() {
   const [tags, categories] = await Promise.all([listTags(), listCategories()]);
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="font-display text-3xl font-semibold tracking-tight">Import from a link</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight">Import a recipe</h1>
       <ImportFlow existingTags={tags.map((t) => t.name)} existingCategories={categories} />
     </div>
   );

@@ -115,7 +115,7 @@ export function valuesFromImport(result: ImportResult): RecipeFormValues {
     yieldText: d.yieldText ?? "",
     category: d.category ?? "",
     tags: d.tags.join(", "),
-    sourceUrl: result.sourceUrl,
+    sourceUrl: result.sourceUrl ?? "",
     sourceName: result.sourceName ?? "",
     notes: d.notes ?? "",
   };

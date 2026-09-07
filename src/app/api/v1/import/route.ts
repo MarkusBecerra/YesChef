@@ -4,6 +4,9 @@ import { jsonError, withErrorHandling } from "@/lib/http";
 import { parseBody } from "@/lib/validate";
 import { ImportError, importRecipeFromUrl } from "@/server/import";
 
+// A page fetch plus, when the page carries no structured recipe, an LLM round trip.
+export const maxDuration = 60;
+
 const bodySchema = z.object({ url: z.string().trim().min(1, "Paste a link first").max(2000) });
 
 /** POST { url } -> a recipe draft to review, never a saved recipe. */

@@ -16,7 +16,7 @@ export default async function NewRecipePage() {
         className="flex items-center justify-between gap-3 rounded-card border border-accent/40 bg-accent-soft px-4 py-3 text-sm text-accent transition hover:brightness-95"
       >
         <span>
-          <span className="font-semibold">Have a link?</span> Paste it and let the app fill this in.
+          <span className="font-semibold">Have a link or a caption?</span> Paste it and let the app fill this in.
         </span>
         <span aria-hidden>→</span>
       </Link>

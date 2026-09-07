@@ -36,13 +36,14 @@ export const EMPTY_DRAFT: RecipeDraft = {
   notes: null,
 };
 
-export type ImportMethod = "jsonld" | "llm" | "metadata";
+export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "metadata";
 
 export type ImportResult = {
   draft: RecipeDraft;
   /** Remote image the page advertised; the server copies it into our storage on save. */
   imageUrl: string | null;
-  sourceUrl: string;
+  /** The page the recipe came from; null when the user pasted text without one. */
+  sourceUrl: string | null;
   sourceName: string | null;
   method: ImportMethod;
   warnings: string[];

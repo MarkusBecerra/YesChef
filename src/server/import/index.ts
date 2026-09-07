@@ -1,20 +1,13 @@
 import * as cheerio from "cheerio";
 import { clean, draftHasContent, EMPTY_DRAFT, type ImportResult, type RecipeDraft } from "./draft";
-import { fetchHtml, ImportError } from "./fetch-page";
+import { fetchHtml, hostName, ImportError } from "./fetch-page";
 import { extractJsonLdRecipe } from "./jsonld";
 import { getRecipeExtractor } from "./llm";
 import { extractPageMeta, extractReadableText } from "./page-meta";
 
 export { ImportError } from "./fetch-page";
 export type { ImportResult } from "./draft";
-
-function hostName(url: string): string | null {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
+export { importRecipeFromText } from "./text";
 
 /**
  * Import strategy, cheapest first:
@@ -48,7 +41,7 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
   if (extractor && text.length > 80) {
     let draft: RecipeDraft;
     try {
-      draft = await extractor.extract({ url: finalUrl, pageTitle: meta.title, pageDescription: meta.description, text });
+      draft = await extractor.extract({ url: finalUrl, title: meta.title, description: meta.description, text });
     } catch (err) {
       console.error("LLM extraction failed", err);
       throw new ImportError("The AI parser failed on this page. Try again, or enter the recipe manually.", 502);
@@ -62,7 +55,7 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
   } else if (!extractor) {
     warnings.push("No structured recipe data on that page, and no AI parser is configured (set ANTHROPIC_API_KEY, the Anthropic federation IDs, or GEMINI_API_KEY).");
   } else {
-    warnings.push("That page had almost no readable text. It may need a login (Instagram and Pinterest often do).");
+    warnings.push("That page had almost no readable text - it probably needs a login. Copy the caption and use \"Paste text\" instead.");
   }
 
   const fallback: RecipeDraft = { ...EMPTY_DRAFT, title: clean(meta.title), description: clean(meta.description) };

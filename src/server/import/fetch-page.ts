@@ -35,6 +35,15 @@ export function assertPublicHttpUrl(raw: string): URL {
   return url;
 }
 
+/** Host without the "www.", for display and as a fallback source name. */
+export function hostName(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchHtml(raw: string): Promise<{ html: string; finalUrl: string }> {
   const url = assertPublicHttpUrl(raw);
   let res: Response;
