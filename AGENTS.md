@@ -32,3 +32,4 @@ Single-user recipe log. Design doc decisions: Next.js 16 on Vercel, Turso (libSQ
 - Locally served photos (`/api/v1/uploads/...`) bypass `next/image` optimisation because the optimiser's fetch carries no session cookie.
 - Tests run against an in-memory libSQL database with the real migrations (`src/test/db.ts`).
 - Claude auth: `src/server/import/llm/auth.ts` picks an API key first, else Workload Identity Federation (Vercel OIDC token with audience `https://api.anthropic.com`, exchanged by the SDK). The identity token is only available inside a request on Vercel, so never fetch it at module scope.
+- Import providers split by job: text extraction follows `LLM_PROVIDER` (Claude by default here), but watching a YouTube video is Gemini-only - `getVideoExtractor()` keys off `GEMINI_API_KEY` alone, because no Claude model takes video.

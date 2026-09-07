@@ -1,6 +1,6 @@
 import { createAnthropicExtractor } from "./anthropic";
-import { createGeminiExtractor } from "./gemini";
-import { configuredProvider, type RecipeExtractor } from "./provider";
+import { createGeminiExtractor, createGeminiVideoExtractor } from "./gemini";
+import { configuredProvider, llmDisabled, type RecipeExtractor, type VideoRecipeExtractor } from "./provider";
 
 export { configuredProvider } from "./provider";
 
@@ -14,4 +14,14 @@ export function getRecipeExtractor(): RecipeExtractor | null {
     default:
       return null;
   }
+}
+
+/**
+ * The extractor that watches a video, or null. Always Gemini, whatever LLM_PROVIDER
+ * says, because Claude's API doesn't take video: a Claude app can still read shorts
+ * as long as a Gemini key is present alongside.
+ */
+export function getVideoExtractor(): VideoRecipeExtractor | null {
+  if (llmDisabled() || !process.env.GEMINI_API_KEY?.trim()) return null;
+  return createGeminiVideoExtractor();
 }

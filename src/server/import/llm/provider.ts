@@ -14,19 +14,53 @@ export interface RecipeExtractor {
   extract(input: ExtractInput): Promise<RecipeDraft>;
 }
 
+export type VideoInput = {
+  /** A public video URL the model can watch for itself. */
+  videoUrl: string;
+  title: string | null;
+  description: string | null;
+};
+
+export interface VideoRecipeExtractor {
+  readonly name: string;
+  extract(input: VideoInput): Promise<RecipeDraft>;
+}
+
+/** How the draft's fields are filled in, shared by every extractor. */
+const DRAFT_FIELD_RULES = `- ingredients: one entry per ingredient, including quantity and unit (e.g. "2 cups all-purpose flour").
+- steps: one entry per step, in order, without numbering. A method run together as prose becomes one step per action.
+- Times are whole minutes. Leave a time null when it isn't stated.
+- servings is a whole number when stated; yieldText is for non-serving yields like "12 muffins".
+- category: one of Breakfast, Lunch, Dinner, Dessert, Snack, Side, Drink, Sauce, Baking - or null.
+- tags: 2 to 6 short lowercase tags (cuisine, meal type, diet, key technique).
+- description: one sentence. notes: helpful tips, or null.
+- Ignore anything that isn't the recipe: hashtags, follower counts, comments, "link in bio", subscribe pleas.`;
+
 export const EXTRACTION_SYSTEM_PROMPT = `You turn text into a recipe record. The text is whatever the cook had to hand: a web page, a social media caption, a message from a friend, a typed-out recipe card.
 
 Rules:
 - Use only information present in the text. Never invent ingredients, steps, or times.
 - If the text contains no recipe, return title null with empty ingredients and steps.
-- ingredients: one entry per ingredient, exactly as written, including quantity and unit (e.g. "2 cups all-purpose flour").
-- steps: one entry per step, in order, without numbering. A caption that runs the method together as prose becomes one step per action.
-- Times are whole minutes. Leave a time null when the text doesn't state it.
-- servings is a whole number when stated; yieldText is for non-serving yields like "12 muffins".
-- category: one of Breakfast, Lunch, Dinner, Dessert, Snack, Side, Drink, Sauce, Baking - or null.
-- tags: 2 to 6 short lowercase tags (cuisine, meal type, diet, key technique).
-- description: one sentence. notes: helpful tips from the text, or null.
-- Ignore anything that isn't the recipe: hashtags, follower counts, comments, "link in bio", subscribe pleas.`;
+${DRAFT_FIELD_RULES}`;
+
+export const VIDEO_SYSTEM_PROMPT = `You watch a cooking video and turn it into a recipe record.
+
+Rules:
+- Use what the video shows and says, plus its title and description. Never invent an ingredient, step or time that isn't there.
+- Quantities are spoken aloud or shown on screen, often in an ingredient list at the start or end; read them off and keep them with the ingredient. Only leave a quantity out when the video genuinely never gives one.
+- If the video isn't a recipe, return title null with empty ingredients and steps.
+${DRAFT_FIELD_RULES}`;
+
+export function buildVideoPrompt(input: VideoInput): string {
+  return [
+    input.title ? `Video title: ${input.title}` : null,
+    input.description ? `Video description:\n${input.description}` : null,
+    "",
+    "Watch the video and write down the recipe it makes.",
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
 
 export function buildUserPrompt(input: ExtractInput): string {
   return [
