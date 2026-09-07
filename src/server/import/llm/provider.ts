@@ -1,4 +1,5 @@
 import type { RecipeDraft } from "../draft";
+import { resolveAnthropicAuth } from "./auth";
 
 export type ExtractInput = {
   url: string;
@@ -40,12 +41,12 @@ export function buildUserPrompt(input: ExtractInput): string {
 
 export type LlmProviderName = "anthropic" | "gemini";
 
-/** Which provider is configured, if any. LLM_PROVIDER wins; otherwise infer from the keys present. */
+/** Which provider is configured, if any. LLM_PROVIDER wins; otherwise infer from the credentials present. */
 export function configuredProvider(): LlmProviderName | null {
   const explicit = process.env.LLM_PROVIDER?.trim().toLowerCase();
   if (explicit === "anthropic" || explicit === "gemini") return explicit;
   if (explicit === "none" || explicit === "off") return null;
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (resolveAnthropicAuth()) return "anthropic";
   if (process.env.GEMINI_API_KEY) return "gemini";
   return null;
 }

@@ -60,7 +60,7 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
     }
     warnings.push("The AI couldn't find a recipe on that page.");
   } else if (!extractor) {
-    warnings.push("No structured recipe data on that page, and no AI parser is configured (set ANTHROPIC_API_KEY or GEMINI_API_KEY).");
+    warnings.push("No structured recipe data on that page, and no AI parser is configured (set ANTHROPIC_API_KEY, the Anthropic federation IDs, or GEMINI_API_KEY).");
   } else {
     warnings.push("That page had almost no readable text. It may need a login (Instagram and Pinterest often do).");
   }

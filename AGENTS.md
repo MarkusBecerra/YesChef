@@ -31,3 +31,4 @@ Single-user recipe log. Design doc decisions: Next.js 16 on Vercel, Turso (libSQ
 - The React Compiler lint rules reject `setState` inside effects; use `useSyncExternalStore` for mount flags and derive-during-render for prop->state sync.
 - Locally served photos (`/api/v1/uploads/...`) bypass `next/image` optimisation because the optimiser's fetch carries no session cookie.
 - Tests run against an in-memory libSQL database with the real migrations (`src/test/db.ts`).
+- Claude auth: `src/server/import/llm/auth.ts` picks an API key first, else Workload Identity Federation (Vercel OIDC token with audience `https://api.anthropic.com`, exchanged by the SDK). The identity token is only available inside a request on Vercel, so never fetch it at module scope.

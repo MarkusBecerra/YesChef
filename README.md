@@ -86,11 +86,20 @@ All endpoints live under `/api/v1` and return JSON. Authenticate with the sessio
    - `APP_PASSPHRASE`: a long passphrase
    - `DATABASE_URL`: the `libsql://…` URL from step 1
    - `DATABASE_AUTH_TOKEN`: the token from step 1
-   - `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`): optional, enables AI parsing on import
+   - `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`): optional, enables AI parsing on import. For Claude without any key, see [Keyless Claude access](#keyless-claude-access) below.
 4. **Deploy.** Import the GitHub repo in Vercel. The `vercel-build` script runs the migrations against Turso and then builds, so every deploy keeps the schema current.
 5. **Domain.** Add your domain under Project → Settings → Domains and point the registrar's DNS at Vercel. On the phone, open the site in Chrome and choose "Add to Home screen" to install it.
 
 Preview deployments share the same database and blob store unless you give the Preview environment its own values.
+
+### Keyless Claude access
+
+Instead of storing an Anthropic API key, the app can use [Workload Identity Federation](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation): Vercel signs a short-lived OIDC token for each request, and the Anthropic SDK exchanges it for a short-lived Anthropic token. Nothing long-lived is stored anywhere.
+
+1. In Vercel: Project → Settings → Security → enable **Secure backend access with OIDC federation** in *Team* issuer mode.
+2. In the Claude Console: Settings → Workload identity → **Connect workload** → Custom OIDC. Issuer URL `https://oidc.vercel.com/<team-slug>`, subject prefix `owner:<team-slug>:project:<project-name>:*`, audience `https://api.anthropic.com`. Raise the issuer's maximum token lifetime to 12 hours (Vercel function tokens last 2 hours, development tokens 12).
+3. Add the IDs the wizard shows to the Vercel project (they are not secrets): `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`. Leave `ANTHROPIC_API_KEY` unset, since a key takes precedence.
+4. Locally, `npx vercel link` then `npx vercel env pull` writes a development `VERCEL_OIDC_TOKEN` into `.env.local`; add the same four IDs there.
 
 ## License
 
