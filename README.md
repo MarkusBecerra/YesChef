@@ -12,6 +12,24 @@ A small, mobile-first recipe log: track what I've actually cooked, how it went, 
 - Accounts, gated by single-use invite codes only the owner can see and hands out from the Account page
 - Light and dark theme (system default with a manual toggle), installable as a PWA
 
+## Roadmap
+
+From the [design doc](https://claude.ai/code/artifact/355aac9b-df7e-457e-9adc-9a3a0827397f), in priority order:
+
+- [x] Recipe database
+- [x] Import via link (schema.org first, AI fallback for unstructured pages)
+- [x] Import via pasted text and YouTube/Shorts video
+- [x] Import by talking (voice, with follow-up questions)
+- [x] Cook log & mastery tracking (cook count + history)
+- [x] Tags, categories & search
+- [x] Invite-only accounts
+- [ ] Meal plan generation
+- [ ] Shopping list generation
+- [ ] AI recipe lookup & generation from stored preferences
+- [ ] "What can I make?" ingredient tracker
+- [ ] Smart standing preferences
+- [ ] Macro tracking
+
 ## Stack
 
 - **Next.js 16** (App Router, TypeScript) with **Tailwind CSS v4**
