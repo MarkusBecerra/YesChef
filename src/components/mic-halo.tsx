@@ -84,8 +84,17 @@ export function MicHalo({ stream, children }: { stream: MediaStream | null; chil
     });
 
     // Safari hands back a suspended context; the tap that opened the microphone is the
-    // gesture that lets it start.
-    void context.resume?.().catch(() => {});
+    // gesture that lets it start. That gesture can expire on the way here - the permission
+    // prompt sat open too long - and a refused resume is indistinguishable from a silent
+    // room: rings that never move, no error anywhere. Nothing to say to the cook, whose
+    // recipe is being dictated regardless, but leave a line for whoever has to explain it.
+    void Promise.resolve(context.resume?.())
+      .catch(() => {})
+      .then(() => {
+        if (context.state === "suspended") {
+          console.warn("MicHalo: the audio context stayed suspended, so the level meter won't move.");
+        }
+      });
 
     return () => {
       cancelAnimationFrame(frame);
