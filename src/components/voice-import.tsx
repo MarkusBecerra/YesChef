@@ -113,9 +113,13 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   /**
    * Hand the microphone back when this component goes away - switching to the "Link" tab or
    * navigating off the page unmounts it, and without this the browser keeps recording.
-   * Cleanup only: no state is set here, which is what the React Compiler rules require.
+   * Refs only: no state is set here, which is what the React Compiler rules require.
    */
   useEffect(() => {
+    // Reset on the way in, not just set on the way out: Strict Mode mounts, tears down and
+    // mounts again on the same refs, and a flag left true would have every microphone this
+    // component opens from then on hand itself straight back.
+    unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
       recognitionRef.current?.abort();
