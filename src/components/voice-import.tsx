@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { openMicStream, stopStream } from "@/lib/mic-stream";
 import type { ImportResult } from "@/server/import/draft";
 
 /**
@@ -137,9 +138,9 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
         recorder.stop();
       }
       recorderRef.current = null;
-      for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+      stopStream(streamRef.current);
       streamRef.current = null;
-      for (const track of meterStreamRef.current?.getTracks() ?? []) track.stop();
+      stopStream(meterStreamRef.current);
       meterStreamRef.current = null;
     };
   }, []);
@@ -174,6 +175,9 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     recognition.onend = () => {
       setInterim("");
       setListening(false);
+      // This one is finished, so stop being the capture in progress: a microphone still being
+      // asked for on its behalf belongs to nobody now, and the ref is how openMeter tells.
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
       // Dictation can end on its own - a long silence, an error, a browser deciding it has
       // heard enough - and the meter's microphone must not outlive it.
       closeMeter();
@@ -182,7 +186,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     recognitionRef.current = recognition;
     recognition.start();
     setListening(true);
-    void openMeter();
+    void openMeter(recognition);
   }
 
   /**
@@ -190,21 +194,20 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
    * It is decoration: if the browser refuses, dictation carries on without a pulse and the
    * cook is told nothing, because nothing they care about has failed.
    */
-  async function openMeter() {
-    if (meterStreamRef.current || !navigator.mediaDevices) return;
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      return;
-    }
-    // Permission can land after a tap-and-stop, or after the page has moved on.
-    if (unmountedRef.current || !recognitionRef.current) {
-      for (const track of stream.getTracks()) track.stop();
-      return;
-    }
-    meterStreamRef.current = stream;
-    setMeterStream(stream);
+  async function openMeter(recognition: SpeechRecognitionLike) {
+    if (!navigator.mediaDevices) return;
+    await openMicStream({
+      open: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+      // Permission can land after a tap-and-stop, after dictation ended on its own, or after
+      // the page has moved on - and by then the cook may already have started talking again.
+      // So it is this recognition that has to still be the one running, not any recognition:
+      // a stream that turns up for a capture nobody is doing is stopped rather than adopted.
+      stillWanted: () => !unmountedRef.current && recognitionRef.current === recognition && !meterStreamRef.current,
+      adopt: (stream) => {
+        meterStreamRef.current = stream;
+        setMeterStream(stream);
+      },
+    });
   }
 
   /** Take the halo off the air. Only a microphone the meter opened itself gets closed here. */
@@ -212,7 +215,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     const stream = meterStreamRef.current;
     meterStreamRef.current = null;
     setMeterStream(null);
-    for (const track of stream?.getTracks() ?? []) track.stop();
+    stopStream(stream);
   }
 
   /* ---------- recording, for browsers with no dictation ---------- */
@@ -237,7 +240,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
 
     // Permission can land after the cook has already navigated away.
     if (unmountedRef.current) {
-      for (const track of stream.getTracks()) track.stop();
+      stopStream(stream);
       return;
     }
 
@@ -246,7 +249,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     try {
       recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     } catch {
-      for (const track of stream.getTracks()) track.stop();
+      stopStream(stream);
       setError("This browser wouldn't start a recording. Type the recipe out instead.");
       return;
     }
@@ -257,7 +260,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onstop = () => {
-      for (const track of stream.getTracks()) track.stop();
+      stopStream(stream);
       streamRef.current = null;
       const type = recorder.mimeType || mimeType || "audio/webm";
       void transcribe(new Blob(chunksRef.current, { type }), type);
