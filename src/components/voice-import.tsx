@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { MicHalo } from "@/components/mic-halo";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
@@ -98,11 +99,15 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<ImportResult | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  /** Whatever microphone is open, handed to the halo so the button can move with your voice. */
+  const [meterStream, setMeterStream] = useState<MediaStream | null>(null);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  /** Only the microphone the meter opened for itself; the recording path meters its own. */
+  const meterStreamRef = useRef<MediaStream | null>(null);
   /** Set the moment a start is requested, before any await, so a double tap can't open two mics. */
   const startingRef = useRef(false);
   const unmountedRef = useRef(false);
@@ -134,6 +139,8 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       recorderRef.current = null;
       for (const track of streamRef.current?.getTracks() ?? []) track.stop();
       streamRef.current = null;
+      for (const track of meterStreamRef.current?.getTracks() ?? []) track.stop();
+      meterStreamRef.current = null;
     };
   }, []);
 
@@ -167,11 +174,45 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     recognition.onend = () => {
       setInterim("");
       setListening(false);
+      // Dictation can end on its own - a long silence, an error, a browser deciding it has
+      // heard enough - and the meter's microphone must not outlive it.
+      closeMeter();
     };
 
     recognitionRef.current = recognition;
     recognition.start();
     setListening(true);
+    void openMeter();
+  }
+
+  /**
+   * Dictation never hands us the audio, so the halo needs a microphone of its own to watch.
+   * It is decoration: if the browser refuses, dictation carries on without a pulse and the
+   * cook is told nothing, because nothing they care about has failed.
+   */
+  async function openMeter() {
+    if (meterStreamRef.current || !navigator.mediaDevices) return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return;
+    }
+    // Permission can land after a tap-and-stop, or after the page has moved on.
+    if (unmountedRef.current || !recognitionRef.current) {
+      for (const track of stream.getTracks()) track.stop();
+      return;
+    }
+    meterStreamRef.current = stream;
+    setMeterStream(stream);
+  }
+
+  /** Take the halo off the air. Only a microphone the meter opened itself gets closed here. */
+  function closeMeter() {
+    const stream = meterStreamRef.current;
+    meterStreamRef.current = null;
+    setMeterStream(null);
+    for (const track of stream?.getTracks() ?? []) track.stop();
   }
 
   /* ---------- recording, for browsers with no dictation ---------- */
@@ -224,6 +265,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     recorder.start();
     recorderRef.current = recorder;
     setListening(true);
+    setMeterStream(stream);
   }
 
   async function transcribe(blob: Blob, mimeType: string) {
@@ -261,6 +303,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   function stop() {
     setListening(false);
     setInterim("");
+    closeMeter();
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -378,27 +421,34 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       {errorBanner}
 
       <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-paper-raised p-6">
-        <button
-          type="button"
-          onClick={listening ? stop : start}
-          disabled={starting || transcribing || busy || (!canDictate && !canRecord)}
-          aria-label={capturing ? "Stop" : "Start talking"}
-          className={cn(
-            "inline-flex size-20 items-center justify-center rounded-full transition disabled:opacity-50",
-            capturing ? "bg-danger-soft text-danger ring-4 ring-danger/30" : "bg-accent text-accent-ink hover:brightness-110",
-          )}
-        >
-          {capturing ? (
-            <svg viewBox="0 0 24 24" className="size-8" fill="currentColor" aria-hidden>
-              <rect x="7" y="7" width="10" height="10" rx="2" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" className="size-9" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" strokeLinejoin="round" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
-            </svg>
-          )}
-        </button>
+        {/* Room for the rings to swell into without crowding the line of text below. */}
+        <div className="py-3">
+          <MicHalo stream={meterStream}>
+            <button
+              type="button"
+              onClick={listening ? stop : start}
+              disabled={starting || transcribing || busy || (!canDictate && !canRecord)}
+              aria-label={capturing ? "Stop" : "Start talking"}
+              className={cn(
+                "inline-flex size-20 items-center justify-center rounded-full transition disabled:opacity-50",
+                capturing
+                  ? "bg-danger-soft text-danger ring-4 ring-danger/30"
+                  : "bg-accent text-accent-ink hover:brightness-110",
+              )}
+            >
+              {capturing ? (
+                <svg viewBox="0 0 24 24" className="size-8" fill="currentColor" aria-hidden>
+                  <rect x="7" y="7" width="10" height="10" rx="2" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="size-9" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" strokeLinejoin="round" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+                </svg>
+              )}
+            </button>
+          </MicHalo>
+        </div>
 
         <p className="text-center text-sm text-ink-muted">
           {!canDictate && !canRecord
