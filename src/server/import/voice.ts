@@ -9,8 +9,12 @@ export const MIN_TRANSCRIPT_CHARS = 25;
 export const MAX_TRANSCRIPT_CHARS = 20_000;
 export const MAX_ANSWER_CHARS = 500;
 
-/** Roughly ten minutes of Opus at a sane bitrate; the request body is the real limit. */
-export const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
+/**
+ * Vercel caps a serverless request body at 4.5 MB, and the platform rejects an oversized
+ * upload before this route ever runs - so stay under it and give the cook our own message.
+ * That is still several minutes of Opus at the bitrate a browser records at.
+ */
+export const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 
 /**
  * What a browser's MediaRecorder produces, plus the everyday file types. The container is

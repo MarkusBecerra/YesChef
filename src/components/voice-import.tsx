@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
@@ -55,6 +55,9 @@ function pickRecordingType(): string | undefined {
   return RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
 }
 
+/** Mirrors MAX_AUDIO_BYTES on the server, which sits under Vercel's request-body cap. */
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 function extensionFor(mimeType: string): string {
   const base = mimeType.split(";")[0];
   return { "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/webm": "webm", "audio/wav": "wav" }[base] ?? "bin";
@@ -99,8 +102,36 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  /** Set the moment a start is requested, before any await, so a double tap can't open two mics. */
+  const startingRef = useRef(false);
+  const unmountedRef = useRef(false);
 
-  const capturing = listening;
+  const [starting, setStarting] = useState(false);
+  const capturing = listening || starting;
+
+  /**
+   * Hand the microphone back when this component goes away - switching to the "Link" tab or
+   * navigating off the page unmounts it, and without this the browser keeps recording.
+   * Cleanup only: no state is set here, which is what the React Compiler rules require.
+   */
+  useEffect(() => {
+    return () => {
+      unmountedRef.current = true;
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        // Drop the handlers first: a recording nobody is waiting for shouldn't upload itself.
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      recorderRef.current = null;
+      for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+      streamRef.current = null;
+    };
+  }, []);
 
   /* ---------- dictation ---------- */
 
@@ -142,23 +173,47 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   /* ---------- recording, for browsers with no dictation ---------- */
 
   async function startRecording() {
+    // The permission prompt can sit here for seconds; a second tap must not open a second mic.
+    if (startingRef.current || recorderRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
     setError(null);
+
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setError(MIC_ERRORS["not-allowed"]);
       return;
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
+
+    // Permission can land after the cook has already navigated away.
+    if (unmountedRef.current) {
+      for (const track of stream.getTracks()) track.stop();
+      return;
     }
 
     const mimeType = pickRecordingType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch {
+      for (const track of stream.getTracks()) track.stop();
+      setError("This browser wouldn't start a recording. Type the recipe out instead.");
+      return;
+    }
+
+    streamRef.current = stream;
     chunksRef.current = [];
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onstop = () => {
       for (const track of stream.getTracks()) track.stop();
+      streamRef.current = null;
       const type = recorder.mimeType || mimeType || "audio/webm";
       void transcribe(new Blob(chunksRef.current, { type }), type);
     };
@@ -170,6 +225,10 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   async function transcribe(blob: Blob, mimeType: string) {
     if (blob.size === 0) {
       setError("That recording came through empty.");
+      return;
+    }
+    if (blob.size > MAX_UPLOAD_BYTES) {
+      setError("That recording is too long to send. Keep it to a couple of minutes, or type it out instead.");
       return;
     }
     setTranscribing(true);
@@ -190,6 +249,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   }
 
   function start() {
+    if (capturing) return;
     if (canDictate) startDictation();
     else void startRecording();
   }
@@ -206,13 +266,17 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   /* ---------- turning it into a recipe ---------- */
 
   async function write() {
+    // What the box shows is transcript + interim; send that, not just the settled half, or
+    // the sentence the cook was still saying when they tapped disappears without a trace.
+    const spoken = joinSpeech(transcript, interim).trim();
     stop();
+    setTranscript(spoken);
     setBusy(true);
     setError(null);
     try {
       const result = await api<ImportResult>("/api/v1/import/voice", {
         method: "POST",
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript: spoken }),
       });
       if (result.followUps?.length) setPending(result);
       else onResult(result);
@@ -248,6 +312,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not fill those in");
+    } finally {
       setBusy(false);
     }
   }
@@ -299,7 +364,10 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
 
   /* ---------- recording / dictating ---------- */
 
-  const ready = transcript.trim().length > 20;
+  const ready = joinSpeech(transcript, interim).trim().length > 20;
+  // Dictation can be written up mid-flow (the text is already here); a recording cannot -
+  // its audio hasn't been transcribed yet, and sending now would silently drop the segment.
+  const canWrite = ready && !busy && !transcribing && !(capturing && !canDictate);
 
   return (
     <div className="flex flex-col gap-5">
@@ -308,8 +376,8 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-paper-raised p-6">
         <button
           type="button"
-          onClick={capturing ? stop : start}
-          disabled={transcribing || busy || (!canDictate && !canRecord)}
+          onClick={listening ? stop : start}
+          disabled={starting || transcribing || busy || (!canDictate && !canRecord)}
           aria-label={capturing ? "Stop" : "Start talking"}
           className={cn(
             "inline-flex size-20 items-center justify-center rounded-full transition disabled:opacity-50",
@@ -364,7 +432,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
         />
       </Field>
 
-      <Button type="button" size="lg" onClick={write} disabled={busy || transcribing || !ready}>
+      <Button type="button" size="lg" onClick={write} disabled={!canWrite}>
         {busy ? "Writing the recipe…" : "Write the recipe"}
       </Button>
     </div>
