@@ -9,7 +9,7 @@ A small, mobile-first recipe log: track what I've actually cooked, how it went, 
 - **Import by talking**: describe a recipe you know by heart and the app writes it down, then asks about whatever you left out
 - Cook log: log each cook with a date, optional rating, and notes; cook count and history per recipe
 - Search across title, ingredients, and tags; filter by favorites, difficulty, tag; seven sort orders
-- Accounts with a hard seat cap (6 by default) and single-use invite codes only the owner can see
+- Accounts, gated by single-use invite codes only the owner can see, sized to whatever `MAX_ACCOUNTS` says (6 by default, advisory)
 - Light and dark theme (system default with a manual toggle), installable as a PWA
 
 ## Stack

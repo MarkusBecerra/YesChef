@@ -9,9 +9,17 @@ import { LoginForm } from "./login-form";
 export const metadata: Metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
 
+/**
+ * Only a path on this site. A leading `//` or `/\` is a scheme-relative URL - the browser
+ * resolves `/\evil.com` to `https://evil.com/` - so a second slash of either kind is out.
+ */
+function safeNextPath(next: unknown): string {
+  return typeof next === "string" && /^\/(?![/\\])/.test(next) ? next : "/";
+}
+
 export default async function LoginPage(props: PageProps<"/login">) {
   const { next } = await props.searchParams;
-  const nextPath = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const nextPath = safeNextPath(next);
   const configured = getAuthSecret() !== null;
   if (configured && (await getCurrentUser())) redirect(nextPath);
   const firstRun = configured && (await needsOwner());

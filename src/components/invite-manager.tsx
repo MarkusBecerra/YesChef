@@ -21,7 +21,8 @@ export function InviteManager({ initialInvites, seats }: { initialInvites: Invit
   const [copied, setCopied] = useState<string | null>(null);
 
   const open = invites.filter((i) => i.status === "open").length;
-  const canCreate = open < seats.remaining;
+  /** Unused codes beyond the size the owner planned for. Worth a note, never a refusal. */
+  const overPlan = open > seats.remaining;
 
   async function create() {
     setBusy(true);
@@ -67,7 +68,7 @@ export function InviteManager({ initialInvites, seats }: { initialInvites: Invit
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-muted">
-        {seats.used} of {seats.max} places taken{seats.remaining > 0 ? `, ${seats.remaining} left` : ""}. Each code works once.
+        {seats.used} {seats.used === 1 ? "account" : "accounts"}, of the {seats.max} you planned for. Each code works once.
       </p>
 
       {error && (
@@ -84,15 +85,14 @@ export function InviteManager({ initialInvites, seats }: { initialInvites: Invit
           aria-label="Invite label"
           maxLength={80}
         />
-        <Button type="button" onClick={create} disabled={busy || !canCreate} className="shrink-0">
+        <Button type="button" onClick={create} disabled={busy} className="shrink-0">
           New code
         </Button>
       </div>
-      {!canCreate && (
+      {overPlan && (
         <p className="text-sm text-ink-muted">
-          {seats.remaining === 0
-            ? "Every place is taken."
-            : `You already have ${open} unused ${open === 1 ? "code" : "codes"} for the ${seats.remaining} places left.`}
+          {open} unused {open === 1 ? "code" : "codes"} for the {seats.remaining} {seats.remaining === 1 ? "place" : "places"} left
+          of your {seats.max}. They all still work - raise MAX_ACCOUNTS if you want the count to match.
         </p>
       )}
 

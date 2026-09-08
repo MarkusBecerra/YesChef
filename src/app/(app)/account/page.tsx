@@ -49,7 +49,7 @@ export default async function AccountPage() {
             <InviteManager initialInvites={invites} seats={seats} />
           </Section>
 
-          <Section title="Who's cooking here" description={`${members.length} of ${seats.max} places used.`}>
+          <Section title="Who's cooking here" description={`${members.length} of the ${seats.max} you planned for.`}>
             <ul className="flex flex-col gap-2">
               {members.map((member) => (
                 <li key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2">

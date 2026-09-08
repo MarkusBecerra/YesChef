@@ -230,6 +230,16 @@ async function writeChildren(tx: Executor, recipeId: number, input: ParsedRecipe
   }
 }
 
+/**
+ * Tag rows nothing links to any more. This runs only from the write paths that can orphan
+ * one: SQLite has a single writer, and doing it from a read (as listTags used to) puts a
+ * DELETE in the way of every page load.
+ */
+async function pruneOrphanTags(tx: Executor): Promise<void> {
+  // Literal SQL: a correlated subquery is the shape Drizzle mangles (see cookCountSql above).
+  await tx.run(sql`delete from tags where not exists (select 1 from recipe_tags where recipe_tags.tag_id = tags.id)`);
+}
+
 async function deleteChildren(tx: Executor, recipeId: number): Promise<void> {
   await tx.delete(ingredients).where(eq(ingredients.recipeId, recipeId));
   await tx.delete(steps).where(eq(steps.recipeId, recipeId));
@@ -265,6 +275,7 @@ export async function updateRecipe(userId: number, id: number, input: ParsedReci
     if (rows.length === 0) return false;
     await deleteChildren(tx, id);
     await writeChildren(tx, id, input);
+    await pruneOrphanTags(tx);
     return true;
   });
   return updated ? getRecipe(userId, id) : null;
@@ -307,6 +318,7 @@ export async function deleteRecipe(userId: number, id: number): Promise<{ photoU
     await deleteChildren(tx, id);
     await tx.delete(cookLogs).where(eq(cookLogs.recipeId, id));
     await tx.delete(recipes).where(eq(recipes.id, id));
+    await pruneOrphanTags(tx);
     return { photoUrl: existing.photoUrl };
   });
 }

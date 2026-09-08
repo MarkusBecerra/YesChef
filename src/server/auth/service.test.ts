@@ -93,21 +93,46 @@ describe("auth service", () => {
     ).rejects.toBeInstanceOf(AuthError);
   });
 
-  it("won't issue more open invites than there are places, or let the last place double-book", async () => {
-    process.env.MAX_ACCOUNTS = "2";
+  it("treats the account count as a plan, not a wall: the owner can always mint one more", async () => {
+    process.env.MAX_ACCOUNTS = "1";
     const { account: ownerAccount } = await signUp(owner);
-    expect(await getSeats()).toEqual({ used: 1, max: 2, remaining: 1 });
+    expect(await getSeats()).toEqual({ used: 1, max: 1, remaining: 0 });
 
-    await inviteFrom(ownerAccount.id);
-    await expect(inviteFrom(ownerAccount.id)).rejects.toBeInstanceOf(AuthError);
+    // Every place is "taken", yet minting still works - the code is the gate, not the count.
+    const first = await inviteFrom(ownerAccount.id);
+    const second = await inviteFrom(ownerAccount.id);
+    expect(second.status).toBe("open");
+
+    const { account } = await signUp({
+      name: "Sam",
+      email: "sam@example.com",
+      password: "braised short ribs",
+      inviteCode: first.code,
+    });
+    expect(account.role).toBe("member");
+    expect(await getSeats()).toMatchObject({ used: 2, max: 1, remaining: 0 });
   });
 
-  it("stops sign-ups once every place is taken", async () => {
-    process.env.MAX_ACCOUNTS = "1";
+  it("still turns away anyone without a code, however few accounts exist", async () => {
     await signUp(owner);
     await expect(
       signUp({ name: "Sam", email: "sam@example.com", password: "braised short ribs", inviteCode: "YESCHEF-AAAA-BBBB" }),
     ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("answers a same-email race with 409 rather than a raw constraint error", async () => {
+    const { account: ownerAccount } = await signUp(owner);
+    const [a, b] = await Promise.all([inviteFrom(ownerAccount.id), inviteFrom(ownerAccount.id)]);
+
+    // Both pass the "is this email taken" check before either insert lands; the unique index
+    // decides, and the loser has to read the same message the form renders for a duplicate.
+    const results = await Promise.allSettled([
+      signUp({ name: "Sam", email: "sam@example.com", password: "braised short ribs", inviteCode: a.code }),
+      signUp({ name: "Sam again", email: "sam@example.com", password: "different password", inviteCode: b.code }),
+    ]);
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ status: 409, field: "email" });
   });
 
   it("refuses an email that already has an account, however it is capitalised", async () => {

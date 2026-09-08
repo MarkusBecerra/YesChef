@@ -118,6 +118,22 @@ export async function getAccountForSession(claims: { userId: number; tokenVersio
   return { id: row.id, email: row.email, name: row.name, role: row.role, createdAt: row.createdAt };
 }
 
+/**
+ * Did this write lose a race to the unique index on users.email?
+ *
+ * Drizzle wraps the driver error ("Failed query: insert into ..."), which wraps LibsqlError,
+ * which wraps the SqliteError that actually names the constraint - so walk the cause chain
+ * rather than reading the top-level message.
+ */
+function isEmailCollision(err: unknown): boolean {
+  let current: unknown = err;
+  for (let depth = 0; current instanceof Error && depth < 5; depth++) {
+    if (/unique constraint failed:\s*users\.email/i.test(current.message)) return true;
+    current = current.cause;
+  }
+  return false;
+}
+
 async function findByEmail(email: string) {
   const db = getDb();
   const [row] = await db.select().from(users).where(eq(users.email, email)).limit(1);
@@ -143,10 +159,10 @@ export async function signUp(input: SignUpInput): Promise<{ account: Account; to
   const db = getDb();
   const parsed = signUpSchema.parse(input);
 
+  // MAX_ACCOUNTS is what the owner expects to need, not a wall: every account still costs a
+  // single-use code that only the owner can mint, so the invite is the real gate. Going over
+  // is the owner's own decision, made by handing out one more code.
   const seats = await getSeats();
-  if (seats.remaining <= 0) {
-    throw new AuthError(`YesChef is full - all ${seats.max} accounts are taken.`, 403, "inviteCode");
-  }
   if (await findByEmail(parsed.email)) {
     throw new AuthError("There's already an account with that email.", 409, "email");
   }
@@ -173,17 +189,25 @@ export async function signUp(input: SignUpInput): Promise<{ account: Account; to
 
   const passwordHash = await hashPassword(parsed.password);
   const now = nowIso();
-  const [created] = await db
-    .insert(users)
-    .values({
-      email: parsed.email,
-      name: parsed.name,
-      passwordHash,
-      role: isFirstAccount ? "owner" : "member",
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ ...accountColumns, tokenVersion: users.tokenVersion });
+  let created: Account & { tokenVersion: number };
+  try {
+    // Hashing takes a quarter of a second, so the check above can go stale: the unique index
+    // is what actually decides, and the cook should still read "that email is taken".
+    [created] = await db
+      .insert(users)
+      .values({
+        email: parsed.email,
+        name: parsed.name,
+        passwordHash,
+        role: isFirstAccount ? "owner" : "member",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning({ ...accountColumns, tokenVersion: users.tokenVersion });
+  } catch (err) {
+    if (isEmailCollision(err)) throw new AuthError("There's already an account with that email.", 409, "email");
+    throw err;
+  }
 
   if (inviteId !== null) {
     // Spend the code, but only if it is still unspent: two people racing the same invite
@@ -252,15 +276,21 @@ export async function updateProfile(userId: number, input: UpdateProfileInput): 
     const existing = await findByEmail(parsed.email);
     if (existing && existing.id !== userId) throw new AuthError("There's already an account with that email.", 409, "email");
   }
-  const [row] = await db
-    .update(users)
-    .set({
-      ...(parsed.name !== undefined ? { name: parsed.name } : {}),
-      ...(parsed.email !== undefined ? { email: parsed.email } : {}),
-      updatedAt: nowIso(),
-    })
-    .where(eq(users.id, userId))
-    .returning(accountColumns);
+  let row: Account | undefined;
+  try {
+    [row] = await db
+      .update(users)
+      .set({
+        ...(parsed.name !== undefined ? { name: parsed.name } : {}),
+        ...(parsed.email !== undefined ? { email: parsed.email } : {}),
+        updatedAt: nowIso(),
+      })
+      .where(eq(users.id, userId))
+      .returning(accountColumns);
+  } catch (err) {
+    if (isEmailCollision(err)) throw new AuthError("There's already an account with that email.", 409, "email");
+    throw err;
+  }
   if (!row) throw new AuthError("Account not found", 404);
   return row;
 }
@@ -286,23 +316,13 @@ export async function listInvites(): Promise<Invite[]> {
 }
 
 /**
- * Mint a code. Guarded by the seat count so the owner can't hand out more invites than
- * there are places left - an unusable code is worse than no code.
+ * Mint a code. Never refused: MAX_ACCOUNTS is the size the owner planned for, and minting a
+ * seventh code is how they change their mind. The code itself is the gate - single use, and
+ * only the owner can make one.
  */
 export async function createInvite(createdByUserId: number, input: CreateInviteInput = {}): Promise<Invite> {
   const db = getDb();
   const parsed = createInviteSchema.parse(input);
-
-  const [seats, invites] = await Promise.all([getSeats(), listInvites()]);
-  const open = invites.filter((i) => i.status === "open").length;
-  if (open >= seats.remaining) {
-    throw new AuthError(
-      seats.remaining === 0
-        ? `Every one of the ${seats.max} accounts is taken.`
-        : `There are already ${open} unused invites for the ${seats.remaining} places left.`,
-      409,
-    );
-  }
 
   const now = nowIso();
   for (let attempt = 0; attempt < 5; attempt++) {

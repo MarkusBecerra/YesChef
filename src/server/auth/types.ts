@@ -2,7 +2,11 @@ import { z } from "zod";
 import { USER_ROLES, type UserRole } from "@/server/db/schema";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./password";
 
-/** Total accounts the app will ever hold: the owner plus the people they invite. */
+/**
+ * How many accounts the owner expects to need, themselves included. Advisory: it shapes what
+ * the Account page says, but nothing refuses a sign-up over it, because every account still
+ * costs an invite code the owner minted by hand.
+ */
 export const DEFAULT_MAX_ACCOUNTS = 6;
 
 export function maxAccounts(): number {
