@@ -2,14 +2,16 @@ import Link from "next/link";
 import { Fab } from "@/components/fab";
 import { RecipeCard } from "@/components/recipe-card";
 import { RecipeFilters } from "@/components/recipe-filters";
+import { requireUser } from "@/lib/current-user";
 import { plural } from "@/lib/format";
 import { hasActiveFilters, parseListQuery } from "@/server/recipes/query";
 import { listRecipes } from "@/server/recipes/service";
 import { listTags } from "@/server/tags/service";
 
 export default async function HomePage(props: PageProps<"/">) {
+  const user = await requireUser();
   const query = parseListQuery(await props.searchParams);
-  const [recipes, tags] = await Promise.all([listRecipes(query), listTags()]);
+  const [recipes, tags] = await Promise.all([listRecipes(user.id, query), listTags(user.id)]);
   const filtering = hasActiveFilters(query);
 
   return (

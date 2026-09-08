@@ -1,16 +1,21 @@
 /**
- * Single-user passphrase gate.
+ * Stateless session tokens.
  *
- * The session token is HMAC-SHA256(passphrase, fixed label). It is deterministic,
- * so it doubles as a bearer token for non-browser clients, and rotating the
- * passphrase invalidates every session at once. Uses Web Crypto only, so it runs
- * in Node, the Next.js proxy, or any other JS runtime.
+ * A token is `v1.<userId>.<tokenVersion>.<issuedAt>.<hmac>`, signed with the app secret.
+ * Nothing is stored server-side, so the proxy can check a request without touching the
+ * database (which it cannot reach on the edge anyway) - and because Next's own guidance is
+ * that the proxy is an optimistic check, the real check happens again in the data layer,
+ * where `tokenVersion` is compared against the user row. Bumping that column is what signs
+ * a user out everywhere; rotating the secret signs everyone out at once.
+ *
+ * Uses Web Crypto only, so it runs in Node, the proxy, or any other JS runtime. The token
+ * doubles as a bearer credential for non-browser clients.
  */
 
 export const SESSION_COOKIE = "yeschef_session";
-export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // one year
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
-const TOKEN_LABEL = "yeschef:session:v1";
+const TOKEN_VERSION = "v1";
 
 const encoder = new TextEncoder();
 
@@ -42,27 +47,70 @@ export async function safeEqual(a: string, b: string): Promise<boolean> {
   return diff === 0 && a.length === b.length;
 }
 
-/** The configured passphrase, or null when the app hasn't been set up yet. */
-export function getConfiguredPassphrase(): string | null {
-  const value = process.env.APP_PASSPHRASE?.trim();
-  return value ? value : null;
+/**
+ * The key session tokens are signed with. AUTH_SECRET is the real setting; APP_PASSPHRASE
+ * is accepted as a fallback so a deployment that predates accounts keeps working after the
+ * upgrade without a new environment variable.
+ */
+export function getAuthSecret(): string | null {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (secret) return secret;
+  const legacy = process.env.APP_PASSPHRASE?.trim();
+  return legacy ? legacy : null;
 }
 
-export async function createSessionToken(passphrase: string): Promise<string> {
-  return hmacSha256(passphrase, TOKEN_LABEL);
+/** The passphrase that lets the very first account be created. See server/auth/service.ts. */
+export function getBootstrapCode(): string | null {
+  const explicit = process.env.OWNER_INVITE_CODE?.trim();
+  if (explicit) return explicit;
+  const legacy = process.env.APP_PASSPHRASE?.trim();
+  return legacy ? legacy : null;
 }
 
-export async function verifyPassphrase(candidate: string): Promise<boolean> {
-  const configured = getConfiguredPassphrase();
-  if (!configured) return false;
-  return safeEqual(candidate, configured);
+export type SessionClaims = {
+  userId: number;
+  /** Must still match the user row; see the module comment. */
+  tokenVersion: number;
+  /** Seconds since the epoch. */
+  issuedAt: number;
+};
+
+function payload(claims: SessionClaims): string {
+  return [TOKEN_VERSION, claims.userId, claims.tokenVersion, claims.issuedAt].join(".");
 }
 
-export async function verifySessionToken(token: string | null | undefined): Promise<boolean> {
-  const configured = getConfiguredPassphrase();
-  if (!configured || !token) return false;
-  const expected = await createSessionToken(configured);
-  return safeEqual(token, expected);
+export async function createSessionToken(claims: Omit<SessionClaims, "issuedAt"> & { issuedAt?: number }): Promise<string> {
+  const secret = getAuthSecret();
+  if (!secret) throw new Error("AUTH_SECRET is not configured");
+  const full: SessionClaims = { ...claims, issuedAt: claims.issuedAt ?? Math.floor(Date.now() / 1000) };
+  const body = payload(full);
+  return `${body}.${await hmacSha256(secret, body)}`;
+}
+
+/** Claims from a token whose signature is valid and whose age is inside the window, else null. */
+export async function readSessionToken(token: string | null | undefined): Promise<SessionClaims | null> {
+  const secret = getAuthSecret();
+  if (!secret || !token) return null;
+
+  const parts = token.split(".");
+  if (parts.length !== 5) return null;
+  const [version, userIdRaw, tokenVersionRaw, issuedAtRaw, signature] = parts;
+  if (version !== TOKEN_VERSION) return null;
+
+  const userId = Number(userIdRaw);
+  const tokenVersion = Number(tokenVersionRaw);
+  const issuedAt = Number(issuedAtRaw);
+  if (!Number.isInteger(userId) || userId <= 0) return null;
+  if (!Number.isInteger(tokenVersion) || tokenVersion <= 0) return null;
+  if (!Number.isInteger(issuedAt) || issuedAt <= 0) return null;
+
+  const claims: SessionClaims = { userId, tokenVersion, issuedAt };
+  const expected = await hmacSha256(secret, payload(claims));
+  if (!(await safeEqual(signature, expected))) return null;
+
+  const age = Math.floor(Date.now() / 1000) - issuedAt;
+  if (age > SESSION_MAX_AGE_SECONDS || age < -60) return null;
+  return claims;
 }
 
 /** Pull a session token out of a request: cookie for browsers, bearer header for native clients. */

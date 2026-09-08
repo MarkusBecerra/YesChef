@@ -2,9 +2,18 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { oidcFederationProvider } from "@anthropic-ai/sdk/lib/credentials/oidc-federation";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { recipeDraftSchema, type RecipeDraft } from "../draft";
+import { recipeDraftSchema, voiceDraftSchema, type RecipeDraft, type VoiceDraft } from "../draft";
 import { resolveAnthropicAuth, type AnthropicAuth } from "./auth";
-import { buildUserPrompt, EXTRACTION_SYSTEM_PROMPT, type ExtractInput, type RecipeExtractor } from "./provider";
+import {
+  buildSpeechPrompt,
+  buildUserPrompt,
+  EXTRACTION_SYSTEM_PROMPT,
+  VOICE_SYSTEM_PROMPT,
+  type ExtractInput,
+  type RecipeExtractor,
+  type SpeechInput,
+  type SpeechRecipeExtractor,
+} from "./provider";
 
 const DEFAULT_MODEL = "claude-opus-5";
 
@@ -49,6 +58,30 @@ export function createAnthropicExtractor(): RecipeExtractor {
         messages: [{ role: "user", content: buildUserPrompt(input) }],
       });
       if (response.stop_reason === "refusal") throw new Error("The AI declined to process this page");
+      if (!response.parsed_output) throw new Error("The AI returned an unreadable answer");
+      return response.parsed_output;
+    },
+  };
+}
+
+/**
+ * The same model over a spoken recipe. Worth a step more effort than a web page: the
+ * transcript needs untangling, and working out what the cook *didn't* say is the whole
+ * point of the follow-up questions.
+ */
+export function createAnthropicSpeechExtractor(): SpeechRecipeExtractor {
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  return {
+    name: `anthropic:${model}`,
+    async extractFromSpeech(input: SpeechInput): Promise<VoiceDraft> {
+      const response = await getClient().messages.parse({
+        model,
+        max_tokens: 8000,
+        output_config: { effort: "medium", format: zodOutputFormat(voiceDraftSchema) },
+        system: VOICE_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: buildSpeechPrompt(input) }],
+      });
+      if (response.stop_reason === "refusal") throw new Error("The AI declined to write this recipe up");
       if (!response.parsed_output) throw new Error("The AI returned an unreadable answer");
       return response.parsed_output;
     },

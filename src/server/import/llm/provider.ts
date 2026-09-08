@@ -1,4 +1,4 @@
-import type { RecipeDraft } from "../draft";
+import type { RecipeDraft, VoiceDraft } from "../draft";
 import { resolveAnthropicAuth } from "./auth";
 
 export type ExtractInput = {
@@ -55,6 +55,71 @@ Rules:
 - Quantities are spoken aloud or shown on screen, often in an ingredient list at the start or end; read them off and keep them with the ingredient. Only leave a quantity out when the video genuinely never gives one.
 - If the video isn't a recipe, return title null with empty ingredients and steps.
 ${DRAFT_FIELD_RULES}`;
+
+/**
+ * Speech is the messiest input we take: it rambles, doubles back, and the phone's
+ * transcriber mangles kitchen words. It is also the only one where the recipe lives in
+ * somebody's head rather than on a page, so the model is allowed to tidy the wording - and
+ * is told to ask, rather than guess, when a quantity or a time never got said.
+ */
+export const VOICE_SYSTEM_PROMPT = `You turn a cook talking out loud into a recipe record. The text is a speech-to-text transcript of somebody describing a recipe they already know by heart - usually one from family or a friend that has never been written down.
+
+Rules:
+- Only the recipe the cook described. Never invent an ingredient, a quantity, a time or a step they didn't give.
+- Speech-to-text mangles cooking words: fix the obvious ones from context ("two cups of flower" -> "2 cups of flour", "sat and pepper" -> "salt and pepper", "sue vide" -> "sous vide"). Never "fix" a word into an ingredient the cook never mentioned.
+- Write it as a recipe, not as a transcript: drop filler ("um", "so yeah", "I guess"), repetition and asides, and put the steps in cooking order even when the cook doubled back. "You just chuck the onions in till they go soft" becomes "Cook the onions until soft".
+- If they said where it came from - a person, a place, a restaurant - keep that in notes.
+- title: what they called it; if they never named it, name it plainly after the dish.
+- followUps: what you would have to ask before anyone could cook this. Ask about a missing quantity for a main ingredient, a missing oven temperature, a missing cook time, or missing servings - the things whose absence would actually stop a cook. One short conversational question each ("How much chicken goes in?"), at most five, fewest first. Never ask about something they already said, and never ask for something optional. When the recipe can be cooked as it stands, return an empty list.
+- If the transcript isn't a recipe at all, return title null with empty ingredients and steps and no followUps.
+${DRAFT_FIELD_RULES}`;
+
+export type FollowUpAnswer = { question: string; answer: string };
+
+export type SpeechInput = {
+  /** What the cook said, as text - from the browser's dictation or a transcription model. */
+  transcript: string;
+  /** A second pass: the draft written from the first pass, and the answers to its questions. */
+  previous?: RecipeDraft | null;
+  answers?: FollowUpAnswer[];
+};
+
+export interface SpeechRecipeExtractor {
+  readonly name: string;
+  extractFromSpeech(input: SpeechInput): Promise<VoiceDraft>;
+}
+
+export type TranscribeInput = { bytes: Uint8Array; mimeType: string };
+
+/** Turns a recording into text, for browsers with no dictation of their own. */
+export interface AudioTranscriber {
+  readonly name: string;
+  transcribe(input: TranscribeInput): Promise<string>;
+}
+
+export const TRANSCRIPTION_PROMPT = `Transcribe this recording of somebody describing a recipe.
+
+Write only what is said, verbatim, as plain sentences with ordinary punctuation. Keep every ingredient, quantity, time and temperature exactly as spoken. Don't summarise it, don't turn it into a recipe, don't add anything that isn't said. If the recording has no speech in it, return an empty string.`;
+
+export function buildSpeechPrompt(input: SpeechInput): string {
+  const lines = ["The cook said:", input.transcript];
+  if (input.previous) {
+    lines.push(
+      "",
+      "This is the recipe you wrote from that, as JSON:",
+      JSON.stringify(input.previous),
+    );
+  }
+  if (input.answers?.length) {
+    lines.push("", "You asked for what was missing, and the cook answered:");
+    for (const { question, answer } of input.answers) lines.push(`Q: ${question}`, `A: ${answer}`);
+    lines.push(
+      "",
+      "Write the whole recipe record again with those answers worked in. Keep everything that was already right. Only ask a follow-up that is still unanswered and still matters.",
+    );
+  }
+  return lines.join("\n");
+}
 
 export function buildVideoPrompt(input: VideoInput): string {
   return [

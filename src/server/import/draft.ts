@@ -36,7 +36,25 @@ export const EMPTY_DRAFT: RecipeDraft = {
   notes: null,
 };
 
-export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "metadata";
+/**
+ * A gap the cook has to fill before the recipe is worth cooking from: the model writes one
+ * of these per thing it would have needed to ask, and the import flow asks them in turn.
+ */
+export const followUpSchema = z.object({
+  /** Short identifier for the gap, e.g. "servings", "oven_temp", "chicken_quantity". */
+  key: z.string(),
+  /** Asked the way a person would: "How much chicken goes in?" */
+  question: z.string(),
+});
+export type FollowUp = z.infer<typeof followUpSchema>;
+
+/** What comes back from a spoken recipe: the same draft, plus what the model still needs. */
+export const voiceDraftSchema = recipeDraftSchema.extend({
+  followUps: z.array(followUpSchema).max(5),
+});
+export type VoiceDraft = z.infer<typeof voiceDraftSchema>;
+
+export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "metadata";
 
 export type ImportResult = {
   draft: RecipeDraft;
@@ -47,6 +65,8 @@ export type ImportResult = {
   sourceName: string | null;
   method: ImportMethod;
   warnings: string[];
+  /** Voice imports only: what the model would still like to know. */
+  followUps?: FollowUp[];
 };
 
 /** Does the draft carry enough to be worth showing? */

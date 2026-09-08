@@ -1,19 +1,30 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { recipeDraftSchema, type RecipeDraft } from "../draft";
+import { recipeDraftSchema, voiceDraftSchema, type RecipeDraft, type VoiceDraft } from "../draft";
 import {
+  buildSpeechPrompt,
   buildUserPrompt,
   buildVideoPrompt,
   EXTRACTION_SYSTEM_PROMPT,
   VIDEO_SYSTEM_PROMPT,
   type ExtractInput,
   type RecipeExtractor,
+  TRANSCRIPTION_PROMPT,
   VideoUnavailable,
+  VOICE_SYSTEM_PROMPT,
+  type AudioTranscriber,
+  type SpeechInput,
+  type SpeechRecipeExtractor,
+  type TranscribeInput,
   type VideoInput,
   type VideoRecipeExtractor,
 } from "./provider";
 
 const DEFAULT_MODEL = "gemini-3.6-flash";
+/** Transcribing is dictation, not comprehension: the small model is enough and much faster. */
+const DEFAULT_AUDIO_MODEL = "gemini-3.5-flash-lite";
+/** A minute of speech is a few hundred kilobytes; this is a ceiling, not a target. */
+const AUDIO_BUDGET_MS = 45_000;
 /** Watching costs roughly a hundred tokens a second, so cap what we hand over. */
 const MAX_VIDEO_SECONDS = 900;
 /**
@@ -124,6 +135,57 @@ export function createGeminiVideoExtractor(): VideoRecipeExtractor {
         console.warn("Retrying video extraction", err);
         return parseDraft((await call()).text);
       }
+    },
+  };
+}
+
+/** Gemini over a spoken recipe, answering with the draft plus its follow-up questions. */
+export function createGeminiSpeechExtractor(): SpeechRecipeExtractor {
+  const ai = client();
+  const model = modelName();
+  return {
+    name: `gemini:${model}`,
+    async extractFromSpeech(input: SpeechInput): Promise<VoiceDraft> {
+      const response = await ai.models.generateContent({
+        model,
+        contents: buildSpeechPrompt(input),
+        config: {
+          systemInstruction: VOICE_SYSTEM_PROMPT,
+          responseMimeType: "application/json",
+          responseJsonSchema: z.toJSONSchema(voiceDraftSchema),
+          temperature: 0,
+        },
+      });
+      if (!response.text) throw new Error("The AI returned an empty answer");
+      return voiceDraftSchema.parse(JSON.parse(response.text));
+    },
+  };
+}
+
+/**
+ * Speech to text for browsers that have none of their own (Firefox, and Safari in a
+ * standalone PWA). Gemini-only, for the same reason as video: no Claude model takes audio.
+ */
+export function createGeminiTranscriber(): AudioTranscriber {
+  const ai = client();
+  const model = process.env.LLM_AUDIO_MODEL?.trim() || DEFAULT_AUDIO_MODEL;
+  return {
+    name: `gemini:${model}`,
+    async transcribe({ bytes, mimeType }: TranscribeInput): Promise<string> {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType, data: Buffer.from(bytes).toString("base64") } },
+              { text: TRANSCRIPTION_PROMPT },
+            ],
+          },
+        ],
+        config: { temperature: 0, abortSignal: AbortSignal.timeout(AUDIO_BUDGET_MS) },
+      });
+      return response.text?.trim() ?? "";
     },
   };
 }

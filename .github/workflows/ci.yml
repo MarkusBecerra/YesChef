@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    name: lint, typecheck, test, build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # PageProps/RouteContext are generated into .next/types, which a fresh
+      # checkout does not have, so tsc cannot resolve them until this has run.
+      - name: Generate route types
+        run: npx next typegen
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # `build`, not `vercel-build`: the latter migrates the database first.
+      - run: npm run build

@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { extractToken, SESSION_COOKIE, verifySessionToken } from "@/server/auth/session";
+import { extractToken, readSessionToken, SESSION_COOKIE } from "@/server/auth/session";
 
 /** Paths reachable without a session. */
-const PUBLIC_PATHS = new Set(["/login", "/api/v1/auth/login"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/api/v1/auth/login", "/api/v1/auth/signup"]);
 
+/**
+ * The optimistic check Next recommends for a proxy: is this request carrying a token we
+ * signed, and is it still inside its window? Whether the account behind it still exists,
+ * and whether the token has been invalidated since, is settled in the data layer by
+ * `getCurrentUser` - the proxy cannot reach the database.
+ */
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
@@ -14,7 +20,7 @@ export async function proxy(request: NextRequest) {
     authorization: request.headers.get("authorization"),
   });
 
-  if (await verifySessionToken(token)) return NextResponse.next();
+  if (await readSessionToken(token)) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

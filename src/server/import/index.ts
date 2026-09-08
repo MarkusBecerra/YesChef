@@ -9,6 +9,7 @@ import { importYouTubeVideo, youtubeVideoId } from "./youtube";
 export { ImportError } from "./fetch-page";
 export type { ImportResult } from "./draft";
 export { importRecipeFromText } from "./text";
+export { importRecipeFromSpeech, transcribeRecipeAudio } from "./voice";
 
 /**
  * Import strategy, cheapest first:
