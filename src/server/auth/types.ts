@@ -2,18 +2,6 @@ import { z } from "zod";
 import { USER_ROLES, type UserRole } from "@/server/db/schema";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "./password";
 
-/**
- * How many accounts the owner expects to need, themselves included. Advisory: it shapes what
- * the Account page says, but nothing refuses a sign-up over it, because every account still
- * costs an invite code the owner minted by hand.
- */
-export const DEFAULT_MAX_ACCOUNTS = 6;
-
-export function maxAccounts(): number {
-  const raw = Number(process.env.MAX_ACCOUNTS?.trim());
-  return Number.isInteger(raw) && raw > 0 && raw <= 100 ? raw : DEFAULT_MAX_ACCOUNTS;
-}
-
 export const emailSchema = z
   .string()
   .trim()
@@ -81,8 +69,6 @@ export type Invite = {
   /** Name of whoever signed up with it, when it has been used. */
   usedByName: string | null;
 };
-
-export type Seats = { used: number; max: number; remaining: number };
 
 /** A refusal the person on the form should read, optionally pinned to one field. */
 export class AuthError extends Error {

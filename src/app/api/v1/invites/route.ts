@@ -1,17 +1,17 @@
 import { requireApiOwner } from "@/lib/current-user";
 import { jsonError, withErrorHandling } from "@/lib/http";
 import { parseBody } from "@/lib/validate";
-import { AuthError, createInvite, getSeats, listInvites } from "@/server/auth/service";
+import { AuthError, countAccounts, createInvite, listInvites } from "@/server/auth/service";
 import { createInviteSchema } from "@/server/auth/types";
 
-/** GET -> every invite code with its status, plus how many places are left. Owner only. */
+/** GET -> every invite code with its status, and how many accounts exist. Owner only. */
 export const GET = withErrorHandling(async () => {
   await requireApiOwner();
-  const [invites, seats] = await Promise.all([listInvites(), getSeats()]);
-  return Response.json({ invites, seats });
+  const [invites, accountCount] = await Promise.all([listInvites(), countAccounts()]);
+  return Response.json({ invites, accountCount });
 });
 
-/** POST { label? } -> mints one code, refusing to over-issue against the remaining places. */
+/** POST { label? } -> mints one code. */
 export const POST = withErrorHandling(async (request: Request) => {
   const owner = await requireApiOwner();
   const input = await parseBody(createInviteSchema, request);

@@ -9,7 +9,7 @@ A small, mobile-first recipe log: track what I've actually cooked, how it went, 
 - **Import by talking**: describe a recipe you know by heart and the app writes it down, then asks about whatever you left out
 - Cook log: log each cook with a date, optional rating, and notes; cook count and history per recipe
 - Search across title, ingredients, and tags; filter by favorites, difficulty, tag; seven sort orders
-- Accounts, gated by single-use invite codes only the owner can see, sized to whatever `MAX_ACCOUNTS` says (6 by default, advisory)
+- Accounts, gated by single-use invite codes only the owner can see and hands out from the Account page
 - Light and dark theme (system default with a manual toggle), installable as a PWA
 
 ## Stack
@@ -102,7 +102,6 @@ All endpoints live under `/api/v1` and return JSON. Authenticate with the sessio
 3. **Environment variables** (Project → Settings → Environment Variables), for Production and Preview:
    - `AUTH_SECRET`: a long random string (changing it signs everyone out)
    - `OWNER_INVITE_CODE`: the one-time code that creates the owner account
-   - `MAX_ACCOUNTS`: optional, defaults to 6
    - `DATABASE_URL`: the `libsql://…` URL from step 1
    - `DATABASE_AUTH_TOKEN`: the token from step 1
    - `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`): optional, enables AI parsing on import. For Claude without any key, see [Keyless Claude access](#keyless-claude-access) below.

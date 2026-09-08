@@ -5,7 +5,7 @@ import { ProfileForm } from "@/components/profile-form";
 import { SignOutButton } from "@/components/sign-out-button";
 import { Pill } from "@/components/ui/pill";
 import { requireUser } from "@/lib/current-user";
-import { getSeats, listAccounts, listInvites } from "@/server/auth/service";
+import { listAccounts, listInvites } from "@/server/auth/service";
 
 export const metadata: Metadata = { title: "Account" };
 
@@ -24,9 +24,7 @@ function Section({ title, description, children }: { title: string; description?
 export default async function AccountPage() {
   const user = await requireUser();
   const isOwner = user.role === "owner";
-  const [invites, seats, members] = isOwner
-    ? await Promise.all([listInvites(), getSeats(), listAccounts()])
-    : [[], await getSeats(), []];
+  const [invites, members] = isOwner ? await Promise.all([listInvites(), listAccounts()]) : [[], []];
 
   return (
     <div className="flex flex-col gap-5">
@@ -46,10 +44,10 @@ export default async function AccountPage() {
       {isOwner && (
         <>
           <Section title="Invites" description="Only you ever see these codes. Send one to somebody and they can make an account.">
-            <InviteManager initialInvites={invites} seats={seats} />
+            <InviteManager initialInvites={invites} accountCount={members.length} />
           </Section>
 
-          <Section title="Who's cooking here" description={`${members.length} of the ${seats.max} you planned for.`}>
+          <Section title="Who's cooking here" description={`${members.length} ${members.length === 1 ? "account" : "accounts"}.`}>
             <ul className="flex flex-col gap-2">
               {members.map((member) => (
                 <li key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-line px-3 py-2">

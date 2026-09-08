@@ -7,7 +7,6 @@ import { getBootstrapCode, safeEqual } from "./session";
 import {
   changePasswordSchema,
   createInviteSchema,
-  maxAccounts,
   signInSchema,
   signUpSchema,
   updateProfileSchema,
@@ -17,7 +16,6 @@ import {
   type CreateInviteInput,
   type Invite,
   type InviteStatus,
-  type Seats,
   type SignInInput,
   type SignUpInput,
   type UpdateProfileInput,
@@ -79,12 +77,6 @@ export async function countAccounts(): Promise<number> {
   const db = getDb();
   const [row] = await db.select({ value: count() }).from(users);
   return row?.value ?? 0;
-}
-
-export async function getSeats(): Promise<Seats> {
-  const used = await countAccounts();
-  const max = maxAccounts();
-  return { used, max, remaining: Math.max(0, max - used) };
 }
 
 /** True before anybody has signed up: the sign-up form then asks for the bootstrap code. */
@@ -159,15 +151,13 @@ export async function signUp(input: SignUpInput): Promise<{ account: Account; to
   const db = getDb();
   const parsed = signUpSchema.parse(input);
 
-  // MAX_ACCOUNTS is what the owner expects to need, not a wall: every account still costs a
-  // single-use code that only the owner can mint, so the invite is the real gate. Going over
-  // is the owner's own decision, made by handing out one more code.
-  const seats = await getSeats();
+  // There is no headcount to check: an account costs a single-use code that only the owner
+  // can mint, so the code is the gate. How many people cook here is the owner's business.
+  const isFirstAccount = (await countAccounts()) === 0;
   if (await findByEmail(parsed.email)) {
     throw new AuthError("There's already an account with that email.", 409, "email");
   }
 
-  const isFirstAccount = seats.used === 0;
   let inviteId: number | null = null;
 
   if (isFirstAccount) {
@@ -315,11 +305,7 @@ export async function listInvites(): Promise<Invite[]> {
   return rows.map(({ revokedAt, ...row }) => ({ ...row, status: inviteStatus({ ...row, revokedAt }) }));
 }
 
-/**
- * Mint a code. Never refused: MAX_ACCOUNTS is the size the owner planned for, and minting a
- * seventh code is how they change their mind. The code itself is the gate - single use, and
- * only the owner can make one.
- */
+/** Mint a code. The code itself is the gate: single use, and only the owner can make one. */
 export async function createInvite(createdByUserId: number, input: CreateInviteInput = {}): Promise<Invite> {
   const db = getDb();
   const parsed = createInviteSchema.parse(input);

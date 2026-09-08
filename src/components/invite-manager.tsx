@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Pill } from "@/components/ui/pill";
 import { api, ApiError } from "@/lib/api";
-import type { Invite, Seats } from "@/server/auth/types";
+import type { Invite } from "@/server/auth/types";
 
 const STATUS_LABEL: Record<Invite["status"], string> = { open: "Unused", used: "Joined", revoked: "Cancelled" };
 
@@ -13,7 +13,7 @@ const STATUS_LABEL: Record<Invite["status"], string> = { open: "Unused", used: "
  * The owner's invite desk: mint a code, read it back later to re-send it, cancel one that
  * went to the wrong person. Codes only exist here - they are never shown to anyone else.
  */
-export function InviteManager({ initialInvites, seats }: { initialInvites: Invite[]; seats: Seats }) {
+export function InviteManager({ initialInvites, accountCount }: { initialInvites: Invite[]; accountCount: number }) {
   const [invites, setInvites] = useState(initialInvites);
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +21,6 @@ export function InviteManager({ initialInvites, seats }: { initialInvites: Invit
   const [copied, setCopied] = useState<string | null>(null);
 
   const open = invites.filter((i) => i.status === "open").length;
-  /** Unused codes beyond the size the owner planned for. Worth a note, never a refusal. */
-  const overPlan = open > seats.remaining;
 
   async function create() {
     setBusy(true);
@@ -68,7 +66,8 @@ export function InviteManager({ initialInvites, seats }: { initialInvites: Invit
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-ink-muted">
-        {seats.used} {seats.used === 1 ? "account" : "accounts"}, of the {seats.max} you planned for. Each code works once.
+        {accountCount} {accountCount === 1 ? "account" : "accounts"} so far
+        {open > 0 ? `, ${open} unused ${open === 1 ? "code" : "codes"}` : ""}. Each code works once.
       </p>
 
       {error && (
@@ -89,12 +88,6 @@ export function InviteManager({ initialInvites, seats }: { initialInvites: Invit
           New code
         </Button>
       </div>
-      {overPlan && (
-        <p className="text-sm text-ink-muted">
-          {open} unused {open === 1 ? "code" : "codes"} for the {seats.remaining} {seats.remaining === 1 ? "place" : "places"} left
-          of your {seats.max}. They all still work - raise MAX_ACCOUNTS if you want the count to match.
-        </p>
-      )}
 
       {invites.length === 0 ? (
         <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">

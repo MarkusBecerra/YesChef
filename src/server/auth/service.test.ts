@@ -6,9 +6,9 @@ import { migrateTestDb, resetTestDb } from "@/test/db";
 import {
   AuthError,
   changePassword,
+  countAccounts,
   createInvite,
   getAccountForSession,
-  getSeats,
   listInvites,
   needsOwner,
   normalizeInviteCode,
@@ -37,7 +37,6 @@ describe("auth service", () => {
     await resetTestDb();
     process.env.AUTH_SECRET = "test secret";
     process.env.OWNER_INVITE_CODE = OWNER_CODE;
-    delete process.env.MAX_ACCOUNTS;
   });
 
   it("makes the first account the owner and turns down the wrong setup code", async () => {
@@ -48,7 +47,7 @@ describe("auth service", () => {
     expect(account.role).toBe("owner");
     expect(account.email).toBe("markus@example.com"); // stored lower-cased
     expect(await needsOwner()).toBe(false);
-    expect(await getSeats()).toEqual({ used: 1, max: 6, remaining: 5 });
+    expect(await countAccounts()).toBe(1);
   });
 
   it("hands the recipes that predate accounts to the owner", async () => {
@@ -93,24 +92,22 @@ describe("auth service", () => {
     ).rejects.toBeInstanceOf(AuthError);
   });
 
-  it("treats the account count as a plan, not a wall: the owner can always mint one more", async () => {
-    process.env.MAX_ACCOUNTS = "1";
+  it("puts no headcount in the way: the owner can always mint another code that works", async () => {
     const { account: ownerAccount } = await signUp(owner);
-    expect(await getSeats()).toEqual({ used: 1, max: 1, remaining: 0 });
 
-    // Every place is "taken", yet minting still works - the code is the gate, not the count.
-    const first = await inviteFrom(ownerAccount.id);
-    const second = await inviteFrom(ownerAccount.id);
-    expect(second.status).toBe("open");
+    const codes = [await inviteFrom(ownerAccount.id), await inviteFrom(ownerAccount.id), await inviteFrom(ownerAccount.id)];
+    expect(codes.every((c) => c.status === "open")).toBe(true);
 
-    const { account } = await signUp({
-      name: "Sam",
-      email: "sam@example.com",
-      password: "braised short ribs",
-      inviteCode: first.code,
-    });
-    expect(account.role).toBe("member");
-    expect(await getSeats()).toMatchObject({ used: 2, max: 1, remaining: 0 });
+    for (const [i, code] of codes.entries()) {
+      const { account } = await signUp({
+        name: `Friend ${i}`,
+        email: `friend${i}@example.com`,
+        password: "braised short ribs",
+        inviteCode: code.code,
+      });
+      expect(account.role).toBe("member");
+    }
+    expect(await countAccounts()).toBe(4);
   });
 
   it("still turns away anyone without a code, however few accounts exist", async () => {
