@@ -262,6 +262,10 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     recorder.onstop = () => {
       stopStream(stream);
       streamRef.current = null;
+      // A recorder can stop itself rather than be stopped - every track ending, a USB
+      // microphone pulled out mid-recipe. Taking the halo off the air here as well as in
+      // stop() is what stops it metering a dead stream at sixty frames a second.
+      setMeterStream(null);
       const type = recorder.mimeType || mimeType || "audio/webm";
       void transcribe(new Blob(chunksRef.current, { type }), type);
     };
