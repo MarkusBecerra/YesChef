@@ -48,11 +48,18 @@ export function MicHalo({ stream, children }: { stream: MediaStream | null; chil
     // An older browser, a stream with no audio track, or a machine that is out of audio
     // hardware: none of those are worth an error message. The button just doesn't pulse.
     let context: AudioContext;
-    let source: MediaStreamAudioSourceNode;
     try {
       context = new Context();
+    } catch {
+      return;
+    }
+    let source: MediaStreamAudioSourceNode;
+    try {
       source = context.createMediaStreamSource(stream);
     } catch {
+      // The context survived its constructor, so it is ours to close: a page only gets a
+      // handful of them, and one abandoned per failed capture would eventually be all of them.
+      void context.close().catch(() => {});
       return;
     }
 
