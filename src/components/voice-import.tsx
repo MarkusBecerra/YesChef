@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { MicHalo } from "@/components/mic-halo";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { openMicStream, stopStream } from "@/lib/mic-stream";
 import type { ImportResult } from "@/server/import/draft";
 
 /**
@@ -98,11 +100,15 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<ImportResult | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  /** Whatever microphone is open, handed to the halo so the button can move with your voice. */
+  const [meterStream, setMeterStream] = useState<MediaStream | null>(null);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  /** Only the microphone the meter opened for itself; the recording path meters its own. */
+  const meterStreamRef = useRef<MediaStream | null>(null);
   /** Set the moment a start is requested, before any await, so a double tap can't open two mics. */
   const startingRef = useRef(false);
   const unmountedRef = useRef(false);
@@ -113,9 +119,13 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   /**
    * Hand the microphone back when this component goes away - switching to the "Link" tab or
    * navigating off the page unmounts it, and without this the browser keeps recording.
-   * Cleanup only: no state is set here, which is what the React Compiler rules require.
+   * Refs only: no state is set here, which is what the React Compiler rules require.
    */
   useEffect(() => {
+    // Reset on the way in, not just set on the way out: Strict Mode mounts, tears down and
+    // mounts again on the same refs, and a flag left true would have every microphone this
+    // component opens from then on hand itself straight back.
+    unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
       recognitionRef.current?.abort();
@@ -128,8 +138,10 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
         recorder.stop();
       }
       recorderRef.current = null;
-      for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+      stopStream(streamRef.current);
       streamRef.current = null;
+      stopStream(meterStreamRef.current);
+      meterStreamRef.current = null;
     };
   }, []);
 
@@ -163,11 +175,47 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     recognition.onend = () => {
       setInterim("");
       setListening(false);
+      // This one is finished, so stop being the capture in progress: a microphone still being
+      // asked for on its behalf belongs to nobody now, and the ref is how openMeter tells.
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
+      // Dictation can end on its own - a long silence, an error, a browser deciding it has
+      // heard enough - and the meter's microphone must not outlive it.
+      closeMeter();
     };
 
     recognitionRef.current = recognition;
     recognition.start();
     setListening(true);
+    void openMeter(recognition);
+  }
+
+  /**
+   * Dictation never hands us the audio, so the halo needs a microphone of its own to watch.
+   * It is decoration: if the browser refuses, dictation carries on without a pulse and the
+   * cook is told nothing, because nothing they care about has failed.
+   */
+  async function openMeter(recognition: SpeechRecognitionLike) {
+    if (!navigator.mediaDevices) return;
+    await openMicStream({
+      open: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+      // Permission can land after a tap-and-stop, after dictation ended on its own, or after
+      // the page has moved on - and by then the cook may already have started talking again.
+      // So it is this recognition that has to still be the one running, not any recognition:
+      // a stream that turns up for a capture nobody is doing is stopped rather than adopted.
+      stillWanted: () => !unmountedRef.current && recognitionRef.current === recognition && !meterStreamRef.current,
+      adopt: (stream) => {
+        meterStreamRef.current = stream;
+        setMeterStream(stream);
+      },
+    });
+  }
+
+  /** Take the halo off the air. Only a microphone the meter opened itself gets closed here. */
+  function closeMeter() {
+    const stream = meterStreamRef.current;
+    meterStreamRef.current = null;
+    setMeterStream(null);
+    stopStream(stream);
   }
 
   /* ---------- recording, for browsers with no dictation ---------- */
@@ -192,7 +240,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
 
     // Permission can land after the cook has already navigated away.
     if (unmountedRef.current) {
-      for (const track of stream.getTracks()) track.stop();
+      stopStream(stream);
       return;
     }
 
@@ -201,7 +249,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
     try {
       recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     } catch {
-      for (const track of stream.getTracks()) track.stop();
+      stopStream(stream);
       setError("This browser wouldn't start a recording. Type the recipe out instead.");
       return;
     }
@@ -212,14 +260,19 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onstop = () => {
-      for (const track of stream.getTracks()) track.stop();
+      stopStream(stream);
       streamRef.current = null;
+      // A recorder can stop itself rather than be stopped - every track ending, a USB
+      // microphone pulled out mid-recipe. Taking the halo off the air here as well as in
+      // stop() is what stops it metering a dead stream at sixty frames a second.
+      setMeterStream(null);
       const type = recorder.mimeType || mimeType || "audio/webm";
       void transcribe(new Blob(chunksRef.current, { type }), type);
     };
     recorder.start();
     recorderRef.current = recorder;
     setListening(true);
+    setMeterStream(stream);
   }
 
   async function transcribe(blob: Blob, mimeType: string) {
@@ -257,6 +310,7 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
   function stop() {
     setListening(false);
     setInterim("");
+    closeMeter();
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -374,27 +428,34 @@ export function VoiceImport({ onResult }: { onResult: (result: ImportResult) => 
       {errorBanner}
 
       <div className="flex flex-col items-center gap-3 rounded-card border border-line bg-paper-raised p-6">
-        <button
-          type="button"
-          onClick={listening ? stop : start}
-          disabled={starting || transcribing || busy || (!canDictate && !canRecord)}
-          aria-label={capturing ? "Stop" : "Start talking"}
-          className={cn(
-            "inline-flex size-20 items-center justify-center rounded-full transition disabled:opacity-50",
-            capturing ? "bg-danger-soft text-danger ring-4 ring-danger/30" : "bg-accent text-accent-ink hover:brightness-110",
-          )}
-        >
-          {capturing ? (
-            <svg viewBox="0 0 24 24" className="size-8" fill="currentColor" aria-hidden>
-              <rect x="7" y="7" width="10" height="10" rx="2" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" className="size-9" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-              <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" strokeLinejoin="round" />
-              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
-            </svg>
-          )}
-        </button>
+        {/* Room for the rings to swell into without crowding the line of text below. */}
+        <div className="py-3">
+          <MicHalo stream={meterStream}>
+            <button
+              type="button"
+              onClick={listening ? stop : start}
+              disabled={starting || transcribing || busy || (!canDictate && !canRecord)}
+              aria-label={capturing ? "Stop" : "Start talking"}
+              className={cn(
+                "inline-flex size-20 items-center justify-center rounded-full transition disabled:opacity-50",
+                capturing
+                  ? "bg-danger-soft text-danger ring-4 ring-danger/30"
+                  : "bg-accent text-accent-ink hover:brightness-110",
+              )}
+            >
+              {capturing ? (
+                <svg viewBox="0 0 24 24" className="size-8" fill="currentColor" aria-hidden>
+                  <rect x="7" y="7" width="10" height="10" rx="2" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="size-9" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" strokeLinejoin="round" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+                </svg>
+              )}
+            </button>
+          </MicHalo>
+        </div>
 
         <p className="text-center text-sm text-ink-muted">
           {!canDictate && !canRecord
