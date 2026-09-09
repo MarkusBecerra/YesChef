@@ -44,6 +44,16 @@ export function hostName(url: string): string | null {
   }
 }
 
+/**
+ * A site that refused us rather than broke: Cloudflare and friends answer an unknown client
+ * with a challenge page that a bare fetch can never satisfy. Worth telling apart from a real
+ * server error, because the cook has a way round it and a status code doesn't hint at one.
+ */
+function isBotWall(res: Response): boolean {
+  if (res.headers.has("cf-mitigated")) return true;
+  return res.status === 403 || res.status === 429 || res.status === 503;
+}
+
 export async function fetchHtml(raw: string): Promise<{ html: string; finalUrl: string }> {
   const url = assertPublicHttpUrl(raw);
   let res: Response;
@@ -53,7 +63,14 @@ export async function fetchHtml(raw: string): Promise<{ html: string; finalUrl: 
     throw new ImportError(err instanceof Error && err.name === "TimeoutError" ? "The site took too long to respond" : "Couldn't reach that site", 502);
   }
   assertPublicHttpUrl(res.url || url.href);
-  if (!res.ok) throw new ImportError(`The site answered with HTTP ${res.status}`, 502);
+  if (!res.ok) {
+    if (isBotWall(res)) {
+      const mitigated = res.headers.get("cf-mitigated");
+      console.warn(`Import refused by ${url.hostname}: HTTP ${res.status}${mitigated ? ` (cf-mitigated: ${mitigated})` : ""}`);
+      throw new ImportError('That site blocks automated readers. Open it in your browser, copy the recipe, and use "Paste text" instead.', 502);
+    }
+    throw new ImportError(`The site answered with HTTP ${res.status}`, 502);
+  }
   const type = res.headers.get("content-type") ?? "";
   if (!/text\/html|application\/xhtml\+xml/i.test(type)) throw new ImportError("That link isn't a web page", 415);
 
