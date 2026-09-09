@@ -15,7 +15,7 @@ const METHOD_LABEL: Record<ImportResult["method"], string> = {
   jsonld: "structured recipe data",
   llm: "AI",
   text: "AI",
-  video: "AI watching the video",
+  video: "AI, from the video itself",
   voice: "AI writing down what you said",
   metadata: "page details only",
 };

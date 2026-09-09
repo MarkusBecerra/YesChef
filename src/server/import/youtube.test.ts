@@ -102,7 +102,7 @@ describe("importYouTubeVideo", () => {
     });
     expect(readText).not.toHaveBeenCalled();
     expect(result).toMatchObject({ method: "video", imageUrl: META.imageUrl, sourceName: "YouTube" });
-    expect(result?.warnings[0]).toMatch(/watching the video/);
+    expect(result?.warnings[0]).toMatch(/An AI watched the video/);
   });
 
   it("prefers the inlined description over the truncated meta one, and passes the runtime along", async () => {
@@ -129,11 +129,14 @@ describe("importYouTubeVideo", () => {
     expect(result?.warnings).toContain("Gemini's quota is used up for now.");
   });
 
-  it("says what's missing when no Gemini key is configured", async () => {
+  it("keeps the missing key out of the cook's warning, but logs it for the owner", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     getVideoExtractor.mockReturnValue(null);
     const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
     expect(result?.method).toBe("llm");
-    expect(result?.warnings[0]).toMatch(/GEMINI_API_KEY/);
+    expect(result?.warnings[0]).toMatch(/watching the video wasn't available/);
+    expect(result?.warnings.join(" ")).not.toMatch(/GEMINI_API_KEY/);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("GEMINI_API_KEY"));
   });
 
   it("gives up rather than returning an empty draft", async () => {
