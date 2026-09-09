@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { assertPublicHttpUrl, ImportError } from "./fetch-page";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { assertPublicHttpUrl, fetchHtml, ImportError } from "./fetch-page";
 
 describe("assertPublicHttpUrl", () => {
   it("accepts ordinary public links", () => {
@@ -22,5 +22,32 @@ describe("assertPublicHttpUrl", () => {
     ]) {
       expect(() => assertPublicHttpUrl(bad), bad).toThrow(ImportError);
     }
+  });
+});
+
+describe("fetchHtml", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const refuse = (status: number, headers: Record<string, string> = {}) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Just a moment...", { status, headers })));
+    return vi.spyOn(console, "warn").mockImplementation(() => {});
+  };
+
+  it("points a blocked cook at Paste text instead of at a status code", async () => {
+    const warn = refuse(403, { "cf-mitigated": "challenge" });
+    await expect(fetchHtml("https://www.example.com/recipe")).rejects.toThrow(/Paste text/);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("cf-mitigated: challenge"));
+  });
+
+  it("treats a bare 403, 429 or 503 as a wall too", async () => {
+    for (const status of [403, 429, 503]) {
+      refuse(status);
+      await expect(fetchHtml("https://www.example.com/recipe"), String(status)).rejects.toThrow(/blocks automated readers/);
+    }
+  });
+
+  it("still reports an ordinary server error as itself", async () => {
+    refuse(500);
+    await expect(fetchHtml("https://www.example.com/recipe")).rejects.toThrow("The site answered with HTTP 500");
   });
 });
