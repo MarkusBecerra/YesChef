@@ -83,6 +83,8 @@ export async function importYouTubeVideo(args: {
   const { warnings } = args;
 
   const watcher = getVideoExtractor();
+  // The cook is told only that watching wasn't available; this is where the owner finds out why.
+  if (!watcher) console.warn("YouTube import: nothing can watch the video. Set GEMINI_API_KEY (LLM_PROVIDER=none disables it too).");
   if (watcher) {
     let draft: RecipeDraft | null = null;
     try {
@@ -97,7 +99,7 @@ export async function importYouTubeVideo(args: {
       warnings.push(err instanceof VideoUnavailable ? err.message : "Couldn't watch the video all the way through.");
     }
     if (draft && draftHasContent(draft)) {
-      warnings.unshift("Read by AI watching the video. Double-check quantities and steps.");
+      warnings.unshift("An AI watched the video and listened to it to write this down. Double-check quantities and steps.");
       if (draft.steps.length === 0) warnings.push("No steps were found.");
       if (lacksAmounts(draft)) warnings.push("The video never gave amounts, so the ingredients have none - add them as you learn them.");
       return { ...common, draft, method: "video", warnings };
@@ -113,8 +115,8 @@ export async function importYouTubeVideo(args: {
       if (draftHasContent(draft)) {
         warnings.unshift(
           watcher
-            ? "Read by AI from the video description. Double-check quantities and steps."
-            : "Read by AI from the video description - watching the video itself needs GEMINI_API_KEY.",
+            ? "An AI read the video's description text, not the video itself. Double-check quantities and steps."
+            : "An AI read the video's description, not the video itself - watching the video wasn't available this time. Double-check quantities and steps.",
         );
         if (draft.steps.length === 0) warnings.push("No steps were found.");
         return { ...common, draft, method: "llm", warnings };
@@ -124,10 +126,13 @@ export async function importYouTubeVideo(args: {
     }
   }
 
+  if (!watcher && !extractor) {
+    console.warn("YouTube import: no LLM configured at all. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or the Anthropic federation IDs.");
+  }
   warnings.push(
     watcher || extractor
       ? "Couldn't get a recipe out of that video, and its description doesn't hold one either."
-      : "Reading a video needs an AI parser, and none is configured (GEMINI_API_KEY lets the app watch it).",
+      : "Couldn't read that video. Try pasting the description as text, or enter it manually.",
   );
   return null;
 }

@@ -130,7 +130,10 @@ export function createGeminiVideoExtractor(): VideoRecipeExtractor {
       try {
         return parseDraft((await call()).text);
       } catch (err) {
-        if (isQuota(err)) throw new VideoUnavailable("Gemini's quota for watching videos is used up for now - try again later, or add billing to the Gemini key.");
+        if (isQuota(err)) {
+          console.warn("Video extraction hit the Gemini quota (429); add billing to the Gemini key to raise it", err);
+          throw new VideoUnavailable("Couldn't watch the video just now - too many videos have been read recently. Try again later, or enter the recipe manually.");
+        }
         if (!isTransient(err) || deadline - Date.now() < MIN_RETRY_MS) throw err;
         console.warn("Retrying video extraction", err);
         return parseDraft((await call()).text);
