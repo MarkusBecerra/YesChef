@@ -1,4 +1,4 @@
-import { draftHasContent, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
+import { draftHasContent, draftIsEmpty, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
 import { getRecipeExtractor, getVideoExtractor } from "./llm";
 import { VideoUnavailable } from "./llm/provider";
 import type { PageMeta } from "./page-meta";
@@ -81,7 +81,11 @@ export async function importYouTubeVideo(args: {
   const description = youtubeDescription(args.html) ?? args.meta.description;
   const common = { imageUrl: args.meta.imageUrl, sourceUrl: args.finalUrl, sourceName: args.sourceName };
   const { warnings } = args;
-  /** Set once a model has come back having genuinely looked and found nothing. */
+  /**
+   * Set once a model has watched the video and come back with nothing. Only watching counts:
+   * a description is not the video's content, and plenty of recipe videos have a boilerplate
+   * one, so failing to find a recipe in it says nothing about the video itself.
+   */
   let ruledOut = false;
 
   const watcher = getVideoExtractor();
@@ -108,7 +112,7 @@ export async function importYouTubeVideo(args: {
     }
     if (draft) {
       warnings.push("The AI watched the video but didn't find a recipe in it.");
-      ruledOut = true;
+      ruledOut = draftIsEmpty(draft);
     }
   }
 
@@ -126,7 +130,6 @@ export async function importYouTubeVideo(args: {
         if (draft.steps.length === 0) warnings.push("No steps were found.");
         return { ...common, draft, method: "llm", warnings };
       }
-      ruledOut = true;
     } catch (err) {
       console.error("LLM extraction failed", err);
     }

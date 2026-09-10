@@ -19,6 +19,7 @@ vi.mock("./llm", () => ({
   getVideoExtractor: () => getVideoExtractor(),
   getSpeechExtractor: () => null,
   getAudioTranscriber: () => null,
+  configuredProvider: () => "anthropic",
 }));
 
 /** A page that says plenty about itself and holds plenty of text - but no recipe. */
@@ -78,6 +79,53 @@ describe("importRecipeFromUrl when there is no recipe to find", () => {
     expect(result.sourceName).toBe("YouTube");
   });
 
+  it("does not blank a video nothing could watch - a boilerplate description is not a verdict", async () => {
+    // No GEMINI_API_KEY is the default here, so this is the ordinary case, not an edge one.
+    getVideoExtractor.mockReturnValue(null);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    page(YOUTUBE_PAGE, "https://www.youtube.com/shorts/Y9LX8QylWwo");
+    const result = await importRecipeFromUrl("https://www.youtube.com/shorts/Y9LX8QylWwo");
+
+    expect(readText).toHaveBeenCalled();
+    expect(result.method).toBe("metadata");
+    expect(result.draft.title).toBe("my cat sits in the sink again #shorts");
+    expect(result.imageUrl).toBe("https://i.ytimg.com/vi/Y9LX8QylWwo/maxresdefault.jpg");
+  });
+
+  it("does not blank a video whose watcher fell over", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    watch.mockRejectedValue(new Error("gemini is having a day"));
+    page(YOUTUBE_PAGE, "https://www.youtube.com/shorts/Y9LX8QylWwo");
+    const result = await importRecipeFromUrl("https://www.youtube.com/shorts/Y9LX8QylWwo");
+
+    expect(result.method).toBe("metadata");
+    expect(result.draft.title).toBe("my cat sits in the sink again #shorts");
+  });
+
+  it("never tells a cook that a page declaring itself a Recipe isn't one", async () => {
+    // The card is rendered client-side, so the JSON-LD names the dish and nothing more.
+    const bodyless = `<!doctype html><html><head>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"Recipe","name":"Shakshuka"}</script>
+    <meta property="og:title" content="Shakshuka for two">
+    <meta property="og:image" content="https://img.example/shak.jpg">
+    </head><body><article><p>${"A long story about the summer I first ate this. ".repeat(20)}</p></article></body></html>`;
+    page(bodyless, "https://example.com/shakshuka");
+    const result = await importRecipeFromUrl("https://example.com/shakshuka");
+
+    expect(result.method).toBe("metadata");
+    expect(result.draft.title).toBe("Shakshuka for two");
+    expect(result.imageUrl).toBe("https://img.example/shak.jpg");
+  });
+
+  it("keeps the page's title when the AI found a recipe body but never named it", async () => {
+    readText.mockResolvedValue({ ...EMPTY_DRAFT, ingredients: ["4 eggs"], steps: ["Crack them in."] });
+    page(VLOG_PAGE, "https://example.com/vlog-47");
+    const result = await importRecipeFromUrl("https://example.com/vlog-47");
+
+    expect(result.method).toBe("metadata");
+    expect(result.draft.title).toBe("I moved to Lisbon and everything changed");
+  });
+
   it("still seeds the form from page details when nothing could read the page", async () => {
     getRecipeExtractor.mockReturnValue(null);
     page(VLOG_PAGE, "https://example.com/vlog-47");
@@ -102,6 +150,16 @@ describe("importRecipeFromUrl when there is no recipe to find", () => {
     getRecipeExtractor.mockReturnValue(null);
     page("<!doctype html><html><head></head><body><p>hi</p></body></html>", "https://example.com/x");
     await expect(importRecipeFromUrl("https://example.com/x")).rejects.toThrow(ImportError);
+  });
+
+  it("but shows the blank form instead of that error once an AI has read the page", async () => {
+    const untitled = `<!doctype html><html><head></head><body><article><p>${"Nothing to do with food at all. ".repeat(20)}</p></article></body></html>`;
+    page(untitled, "https://example.com/x");
+    const result = await importRecipeFromUrl("https://example.com/x");
+
+    expect(result.method).toBe("none");
+    expect(result.draft.title).toBeNull();
+    expect(result.sourceUrl).toBe("https://example.com/x");
   });
 });
 

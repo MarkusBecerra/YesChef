@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { clean, draftHasContent, EMPTY_DRAFT, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
+import { clean, draftHasContent, draftIsEmpty, EMPTY_DRAFT, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
 import { fetchHtml, hostName, ImportError } from "./fetch-page";
 import { extractJsonLdRecipe } from "./jsonld";
 import { getRecipeExtractor } from "./llm";
@@ -39,11 +39,18 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
     };
   }
 
+  /**
+   * A page that declares itself a schema.org/Recipe is about a recipe even when nothing could
+   * build one out of it - a card rendered client-side, or a paywall. Never tell that cook the
+   * page isn't a recipe; what it says about itself is the best lead there is.
+   */
+  const settle = (outcome: EmptyImport): EmptyImport => (structured ? "unread" : outcome);
+
   const videoId = youtubeVideoId(finalUrl);
   if (videoId) {
     const watched = await importYouTubeVideo({ videoId, finalUrl, html, meta, sourceName, warnings });
     // A YouTube page's own text is player chrome; there is nothing further to try.
-    return typeof watched === "string" ? emptyImport(meta, finalUrl, sourceName, warnings, watched) : watched;
+    return typeof watched === "string" ? emptyImport(meta, finalUrl, sourceName, warnings, settle(watched)) : watched;
   }
 
   const text = extractReadableText($);
@@ -63,14 +70,14 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
       return { draft, imageUrl: meta.imageUrl, sourceUrl: finalUrl, sourceName, method: "llm", warnings };
     }
     warnings.push("The AI couldn't find a recipe on that page.");
-    outcome = "no-recipe";
+    if (draftIsEmpty(draft)) outcome = "no-recipe";
   } else if (!extractor) {
     warnings.push("No structured recipe data on that page, and no AI parser is configured (set ANTHROPIC_API_KEY, the Anthropic federation IDs, or GEMINI_API_KEY).");
   } else {
     warnings.push("That page had almost no readable text - it probably needs a login. Copy the caption and use \"Paste text\" instead.");
   }
 
-  return emptyImport(meta, finalUrl, sourceName, warnings, outcome);
+  return emptyImport(meta, finalUrl, sourceName, warnings, settle(outcome));
 }
 
 /**
@@ -80,6 +87,10 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
  * the title and blurb belong to whatever else it is about, so the form opens blank: a cook
  * looking at a non-recipe video should see that nothing was found, not a filled-in title and
  * a blurb that make a failed import look like a successful one.
+ *
+ * A link gets a blank form rather than the 422 that pasted text and spoken recipes throw: those
+ * are the cook's own words to fix and paste again, while a link may still be worth typing up by
+ * hand - and the form keeps the source, so doing that doesn't lose where it came from.
  */
 function emptyImport(meta: PageMeta, finalUrl: string, sourceName: string | null, warnings: string[], outcome: EmptyImport): ImportResult {
   const source = { sourceUrl: finalUrl, sourceName, warnings };

@@ -82,6 +82,15 @@ export function draftHasContent(d: RecipeDraft): boolean {
   return Boolean(d.title) && (d.ingredients.length > 0 || d.steps.length > 0);
 }
 
+/**
+ * Nothing a recipe could be built from. Stricter than `!draftHasContent`, which also insists
+ * on a name: a draft with ingredients and steps but no title is a recipe the model forgot to
+ * name, and is not evidence that the source held no recipe.
+ */
+export function draftIsEmpty(d: RecipeDraft): boolean {
+  return d.ingredients.length === 0 && d.steps.length === 0;
+}
+
 export function clean(s: string | null | undefined): string | null {
   const t = s?.replace(/\s+/g, " ").trim();
   return t ? t : null;

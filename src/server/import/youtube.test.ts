@@ -152,11 +152,24 @@ describe("importYouTubeVideo", () => {
     expect(call.warnings.join(" ")).toMatch(/didn't find a recipe/);
   });
 
-  it("ruled it out when only the description could be read and held no recipe", async () => {
+  it("does not rule a video out on its description alone - most recipe videos have a boilerplate one", async () => {
     getVideoExtractor.mockReturnValue(null);
     vi.spyOn(console, "warn").mockImplementation(() => {});
     readText.mockResolvedValue(EMPTY_DRAFT);
-    expect(await importYouTubeVideo(args(DESCRIPTION_HTML))).toBe("no-recipe");
+    expect(await importYouTubeVideo(args(DESCRIPTION_HTML))).toBe("unread");
+  });
+
+  it("does not rule a video out when watching failed and only the description was read", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    watch.mockRejectedValue(new Error("timed out"));
+    readText.mockResolvedValue(EMPTY_DRAFT);
+    expect(await importYouTubeVideo(args(DESCRIPTION_HTML))).toBe("unread");
+  });
+
+  it("keeps a watched draft that has a body but no name out of the verdict", async () => {
+    watch.mockResolvedValue({ ...EMPTY_DRAFT, ingredients: ["8 oz rice noodles"], steps: ["Soak them."] });
+    readText.mockResolvedValue(EMPTY_DRAFT);
+    expect(await importYouTubeVideo(args(DESCRIPTION_HTML))).toBe("unread");
   });
 
   it("says nothing read it when there is no model to read it with", async () => {
