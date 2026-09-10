@@ -55,6 +55,8 @@ export function RecipeForm({
   }, [values.prepMinutes, values.cookMinutes]);
 
   const blockedReason = useMemo(() => saveBlockedReason(values), [values]);
+  // Kept mounted so it reads as a live region rather than appearing mid-announcement.
+  const showBlocked = blockedReason !== null && !busy;
 
   const categories = useMemo(
     () => Array.from(new Set([...existingCategories, ...DEFAULT_CATEGORIES])),
@@ -256,11 +258,9 @@ export function RecipeForm({
       </Field>
 
       <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-line bg-paper/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
-        {blockedReason && !busy && (
-          <p id="save-blocked" className="text-center text-xs text-ink-muted">
-            {blockedReason}
-          </p>
-        )}
+        <p id="save-blocked" role="status" className="text-center text-xs text-ink-muted empty:hidden">
+          {showBlocked ? blockedReason : ""}
+        </p>
         <div className="flex gap-2">
           <Button type="button" variant="secondary" size="lg" onClick={() => router.back()} disabled={busy} className="flex-1">
             Cancel
@@ -269,7 +269,7 @@ export function RecipeForm({
             type="submit"
             size="lg"
             disabled={busy || blockedReason !== null}
-            aria-describedby={blockedReason ? "save-blocked" : undefined}
+            aria-describedby={showBlocked ? "save-blocked" : undefined}
             className="flex-[2]"
           >
             {busy ? "Saving…" : mode === "create" ? "Save recipe" : "Save changes"}

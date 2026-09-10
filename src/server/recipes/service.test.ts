@@ -4,7 +4,8 @@ import { addCookLog, deleteCookLog, updateCookLog } from "@/server/cooks/service
 import { listTags } from "@/server/tags/service";
 import { createTestUser, migrateTestDb, resetTestDb } from "@/test/db";
 import { createRecipe, deleteRecipe, getRecipe, listRecipes, patchRecipe, setRecipePhoto, updateRecipe } from "./service";
-import { RECIPE_BODY_REQUIRED_MESSAGE, recipeInputSchema, type RecipeSort } from "./types";
+import { recipeInputSchema, type RecipeSort } from "./types";
+import { RECIPE_BODY_REQUIRED } from "./values";
 
 const base = (overrides: Record<string, unknown> = {}) =>
   recipeInputSchema.parse({
@@ -57,11 +58,11 @@ describe("recipe service", () => {
     expect(result.success).toBe(false);
     // Both list fields carry the message so the form highlights wherever the cook starts typing.
     expect(result.error && z.flattenError(result.error).fieldErrors).toMatchObject({
-      ingredients: [RECIPE_BODY_REQUIRED_MESSAGE],
-      steps: [RECIPE_BODY_REQUIRED_MESSAGE],
+      ingredients: [RECIPE_BODY_REQUIRED],
+      steps: [RECIPE_BODY_REQUIRED],
     });
 
-    // Blank-ish lists do not count, but either list alone is enough.
+    // Empty lists do not count, but either list alone is enough.
     expect(recipeInputSchema.safeParse({ title: "x", ingredients: [], steps: [] }).success).toBe(false);
     expect(recipeInputSchema.safeParse({ title: "x", ingredients: ["4 eggs"] }).success).toBe(true);
     expect(recipeInputSchema.safeParse({ title: "x", steps: ["Bake."] }).success).toBe(true);

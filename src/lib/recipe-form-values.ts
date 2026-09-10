@@ -1,6 +1,6 @@
 import type { ImportResult } from "@/server/import/draft";
 import type { RecipeDetail, RecipeInput } from "@/server/recipes/types";
-import { hasRecipeBody, splitLines } from "@/server/recipes/values";
+import { hasRecipeBody, RECIPE_BODY_REQUIRED, splitLines } from "@/server/recipes/values";
 
 /**
  * Pure mapping between the recipe form's string fields and the API payload.
@@ -128,7 +128,7 @@ export function valuesFromImport(result: ImportResult): RecipeFormValues {
 export function saveBlockedReason(v: RecipeFormValues): string | null {
   if (v.title.trim() === "") return "Add a title to save.";
   if (!hasRecipeBody({ ingredients: splitLines(v.ingredients), steps: splitLines(v.steps) })) {
-    return "Add at least one ingredient or step to save.";
+    return `${RECIPE_BODY_REQUIRED} to save.`;
   }
   return null;
 }

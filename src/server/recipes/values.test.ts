@@ -21,6 +21,7 @@ describe("values", () => {
     expect(hasRecipeBody({ ingredients: ["4 eggs"], steps: [] })).toBe(true);
     expect(hasRecipeBody({ ingredients: [], steps: ["Bake."] })).toBe(true);
     expect(hasRecipeBody({ ingredients: ["4 eggs"], steps: ["Bake."] })).toBe(true);
+    expect(hasRecipeBody({ ingredients: ["   "], steps: ["\n"] })).toBe(false);
   });
 
   it("computes the effective total time", () => {
