@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RecipeDetail } from "@/server/recipes/types";
-import { EMPTY_VALUES, payloadFromValues, valuesFromRecipe } from "./recipe-form-values";
+import { EMPTY_VALUES, payloadFromValues, saveBlockedReason, valuesFromRecipe } from "./recipe-form-values";
 
 const detail: RecipeDetail = {
   id: 7,
@@ -69,5 +69,20 @@ describe("recipe form values", () => {
     expect(payload.ingredients).toEqual(["a", "b"]);
     expect(payload.steps).toEqual([]);
     expect(payload.tags).toEqual(["one", "Two", "three"]);
+  });
+
+  it("blocks saving until there is a title and some content", () => {
+    expect(saveBlockedReason(EMPTY_VALUES)).toBe("Add a title to save.");
+    expect(saveBlockedReason({ ...EMPTY_VALUES, ingredients: "4 eggs" })).toBe("Add a title to save.");
+    expect(saveBlockedReason({ ...EMPTY_VALUES, title: "  " })).toBe("Add a title to save.");
+
+    const titleOnly = { ...EMPTY_VALUES, title: "Shakshuka", description: "Eggs in tomato", notes: "From mom" };
+    expect(saveBlockedReason(titleOnly)).toBe("Add at least one ingredient or step to save.");
+    // Whitespace-only lists are not content either.
+    expect(saveBlockedReason({ ...titleOnly, ingredients: "  \n\n \t" })).toBe("Add at least one ingredient or step to save.");
+
+    expect(saveBlockedReason({ ...titleOnly, ingredients: "4 eggs" })).toBeNull();
+    expect(saveBlockedReason({ ...titleOnly, steps: "Crack in the eggs." })).toBeNull();
+    expect(saveBlockedReason(valuesFromRecipe(detail))).toBeNull();
   });
 });

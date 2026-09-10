@@ -1,9 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { addCookLog, deleteCookLog, updateCookLog } from "@/server/cooks/service";
 import { listTags } from "@/server/tags/service";
 import { createTestUser, migrateTestDb, resetTestDb } from "@/test/db";
 import { createRecipe, deleteRecipe, getRecipe, listRecipes, patchRecipe, setRecipePhoto, updateRecipe } from "./service";
-import { recipeInputSchema, type RecipeSort } from "./types";
+import { RECIPE_BODY_REQUIRED_MESSAGE, recipeInputSchema, type RecipeSort } from "./types";
 
 const base = (overrides: Record<string, unknown> = {}) =>
   recipeInputSchema.parse({
@@ -42,12 +43,28 @@ describe("recipe service", () => {
   });
 
   it("validates input", () => {
-    expect(() => recipeInputSchema.parse({ title: "  " })).toThrow();
-    expect(() => recipeInputSchema.parse({ title: "x", sourceUrl: "not a url" })).toThrow();
-    const parsed = recipeInputSchema.parse({ title: "x", sourceUrl: "", servings: "", difficulty: "" });
+    expect(() => recipeInputSchema.parse({ title: "  ", ingredients: ["x"] })).toThrow();
+    expect(() => recipeInputSchema.parse({ title: "x", ingredients: ["x"], sourceUrl: "not a url" })).toThrow();
+    const parsed = recipeInputSchema.parse({ title: "x", ingredients: ["x"], sourceUrl: "", servings: "", difficulty: "" });
     expect(parsed.sourceUrl).toBeNull();
     expect(parsed.servings).toBeNull();
     expect(parsed.difficulty).toBeNull();
+  });
+
+  // Both POST and PUT parse this schema, so an edit cannot empty a recipe out either.
+  it("rejects a recipe that is nothing but a title", () => {
+    const result = recipeInputSchema.safeParse({ title: "Shakshuka", description: "Eggs in tomato", notes: "From mom" });
+    expect(result.success).toBe(false);
+    // Both list fields carry the message so the form highlights wherever the cook starts typing.
+    expect(result.error && z.flattenError(result.error).fieldErrors).toMatchObject({
+      ingredients: [RECIPE_BODY_REQUIRED_MESSAGE],
+      steps: [RECIPE_BODY_REQUIRED_MESSAGE],
+    });
+
+    // Blank-ish lists do not count, but either list alone is enough.
+    expect(recipeInputSchema.safeParse({ title: "x", ingredients: [], steps: [] }).success).toBe(false);
+    expect(recipeInputSchema.safeParse({ title: "x", ingredients: ["4 eggs"] }).success).toBe(true);
+    expect(recipeInputSchema.safeParse({ title: "x", steps: ["Bake."] }).success).toBe(true);
   });
 
   it("replaces children on update and bumps updatedAt", async () => {

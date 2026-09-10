@@ -43,3 +43,11 @@ export function effectiveTotalMinutes(input: {
   if (input.prepMinutes == null && input.cookMinutes == null) return null;
   return (input.prepMinutes ?? 0) + (input.cookMinutes ?? 0);
 }
+
+/**
+ * A recipe needs more than a title: at least one ingredient or one step.
+ * Shared by `recipeInputSchema` and the form so the save button and the API agree.
+ */
+export function hasRecipeBody(input: { ingredients: readonly string[]; steps: readonly string[] }): boolean {
+  return input.ingredients.length > 0 || input.steps.length > 0;
+}

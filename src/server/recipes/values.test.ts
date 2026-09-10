@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectiveTotalMinutes, normalizeTag, normalizeTags, splitLines } from "./values";
+import { effectiveTotalMinutes, hasRecipeBody, normalizeTag, normalizeTags, splitLines } from "./values";
 
 describe("values", () => {
   it("normalises tags", () => {
@@ -14,6 +14,13 @@ describe("values", () => {
       "a pinch of salt",
       "butter",
     ]);
+  });
+
+  it("wants an ingredient or a step before a recipe counts as one", () => {
+    expect(hasRecipeBody({ ingredients: [], steps: [] })).toBe(false);
+    expect(hasRecipeBody({ ingredients: ["4 eggs"], steps: [] })).toBe(true);
+    expect(hasRecipeBody({ ingredients: [], steps: ["Bake."] })).toBe(true);
+    expect(hasRecipeBody({ ingredients: ["4 eggs"], steps: ["Bake."] })).toBe(true);
   });
 
   it("computes the effective total time", () => {
