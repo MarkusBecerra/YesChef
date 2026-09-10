@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DIFFICULTIES, type Difficulty } from "@/server/db/schema";
+import { hasRecipeBody, RECIPE_BODY_REQUIRED } from "@/server/recipes/values";
 
 const blankToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
@@ -9,8 +10,7 @@ const optionalInt = (min: number, max: number) =>
 
 export const difficultySchema = z.enum(DIFFICULTIES);
 
-/** Payload for creating or fully replacing a recipe. */
-export const recipeInputSchema = z.object({
+const recipeFieldsSchema = z.object({
   title: z.string().trim().min(1, "Title is required").max(200),
   description: optionalText(2000),
   notes: optionalText(20000),
@@ -31,6 +31,17 @@ export const recipeInputSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
   /** Import flow only: a remote image to copy into our storage after creating. */
   photoSourceUrl: z.preprocess(blankToNull, z.url().max(2000).nullable()).optional(),
+});
+
+/**
+ * Payload for creating or fully replacing a recipe. A title alone is not a
+ * recipe: it needs at least one ingredient or step to be worth saving.
+ */
+export const recipeInputSchema = recipeFieldsSchema.superRefine((value, ctx) => {
+  if (hasRecipeBody(value)) return;
+  for (const field of ["ingredients", "steps"] as const) {
+    ctx.addIssue({ code: "custom", path: [field], message: RECIPE_BODY_REQUIRED });
+  }
 });
 export type RecipeInput = z.input<typeof recipeInputSchema>;
 export type ParsedRecipeInput = z.output<typeof recipeInputSchema>;

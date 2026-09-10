@@ -1,6 +1,6 @@
 import type { ImportResult } from "@/server/import/draft";
 import type { RecipeDetail, RecipeInput } from "@/server/recipes/types";
-import { splitLines } from "@/server/recipes/values";
+import { hasRecipeBody, RECIPE_BODY_REQUIRED, splitLines } from "@/server/recipes/values";
 
 /**
  * Pure mapping between the recipe form's string fields and the API payload.
@@ -119,4 +119,16 @@ export function valuesFromImport(result: ImportResult): RecipeFormValues {
     sourceName: result.sourceName ?? "",
     notes: d.notes ?? "",
   };
+}
+
+/**
+ * Why the form can't be saved yet, or null when it can. Mirrors `recipeInputSchema`
+ * so the save button and the API agree on what counts as a recipe.
+ */
+export function saveBlockedReason(v: RecipeFormValues): string | null {
+  if (v.title.trim() === "") return "Add a title to save.";
+  if (!hasRecipeBody({ ingredients: splitLines(v.ingredients), steps: splitLines(v.steps) })) {
+    return `${RECIPE_BODY_REQUIRED} to save.`;
+  }
+  return null;
 }

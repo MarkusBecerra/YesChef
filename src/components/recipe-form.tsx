@@ -7,7 +7,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { DIFFICULTY_LABELS } from "@/lib/format";
-import { EMPTY_VALUES, payloadFromValues, type RecipeFormValues } from "@/lib/recipe-form-values";
+import { EMPTY_VALUES, payloadFromValues, saveBlockedReason, type RecipeFormValues } from "@/lib/recipe-form-values";
 import type { ValidationDetails } from "@/lib/validate";
 import { DIFFICULTIES } from "@/server/db/schema";
 import type { RecipeDetail } from "@/server/recipes/types";
@@ -53,6 +53,10 @@ export function RecipeForm({
     if (p == null && c == null) return null;
     return (p ?? 0) + (c ?? 0);
   }, [values.prepMinutes, values.cookMinutes]);
+
+  const blockedReason = useMemo(() => saveBlockedReason(values), [values]);
+  // Kept mounted so it reads as a live region rather than appearing mid-announcement.
+  const showBlocked = blockedReason !== null && !busy;
 
   const categories = useMemo(
     () => Array.from(new Set([...existingCategories, ...DEFAULT_CATEGORIES])),
@@ -253,13 +257,24 @@ export function RecipeForm({
         <Textarea id="notes" value={values.notes} onChange={set("notes")} rows={4} />
       </Field>
 
-      <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-line bg-paper/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
-        <Button type="button" variant="secondary" size="lg" onClick={() => router.back()} disabled={busy} className="flex-1">
-          Cancel
-        </Button>
-        <Button type="submit" size="lg" disabled={busy || values.title.trim() === ""} className="flex-[2]">
-          {busy ? "Saving…" : mode === "create" ? "Save recipe" : "Save changes"}
-        </Button>
+      <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-line bg-paper/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur">
+        <p id="save-blocked" role="status" className="text-center text-xs text-ink-muted empty:hidden">
+          {showBlocked ? blockedReason : ""}
+        </p>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" size="lg" onClick={() => router.back()} disabled={busy} className="flex-1">
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="lg"
+            disabled={busy || blockedReason !== null}
+            aria-describedby={showBlocked ? "save-blocked" : undefined}
+            className="flex-[2]"
+          >
+            {busy ? "Saving…" : mode === "create" ? "Save recipe" : "Save changes"}
+          </Button>
+        </div>
       </div>
     </form>
   );

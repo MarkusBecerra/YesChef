@@ -43,3 +43,15 @@ export function effectiveTotalMinutes(input: {
   if (input.prepMinutes == null && input.cookMinutes == null) return null;
   return (input.prepMinutes ?? 0) + (input.cookMinutes ?? 0);
 }
+
+/**
+ * A recipe needs more than a title: at least one ingredient or one step.
+ * Shared by `recipeInputSchema` and the form so the save button and the API agree.
+ */
+export function hasRecipeBody(input: { ingredients: readonly string[]; steps: readonly string[] }): boolean {
+  const filled = (lines: readonly string[]) => lines.some((line) => line.trim() !== "");
+  return filled(input.ingredients) || filled(input.steps);
+}
+
+/** How we say it: a field error on its own, and the tail of the form's hint. */
+export const RECIPE_BODY_REQUIRED = "Add at least one ingredient or step";
