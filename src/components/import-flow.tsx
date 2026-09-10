@@ -11,7 +11,8 @@ import { cn } from "@/lib/cn";
 import { valuesFromImport } from "@/lib/recipe-form-values";
 import type { ImportResult } from "@/server/import/draft";
 
-const METHOD_LABEL: Record<ImportResult["method"], string> = {
+/** Every method that produced something; "none" gets its own banner instead of a label. */
+const METHOD_LABEL: Record<Exclude<ImportResult["method"], "none">, string> = {
   jsonld: "structured recipe data",
   llm: "AI",
   text: "AI",
@@ -80,10 +81,17 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
               <img src={result.imageUrl} alt="" className="size-16 shrink-0 rounded-lg object-cover" />
             )}
             <div className="flex flex-col gap-1">
-              <p>
-                <span className="font-semibold">Imported {from}</span> via {METHOD_LABEL[result.method]}. Check it over, then save.
-                {result.imageUrl && " The photo will be attached."}
-              </p>
+              {result.method === "none" ? (
+                <p>
+                  <span className="font-semibold">No recipe found {from}.</span> Nothing has been filled in, because whatever that page is about, it
+                  isn&apos;t a recipe. Type it in yourself, or start over with another link.
+                </p>
+              ) : (
+                <p>
+                  <span className="font-semibold">Imported {from}</span> via {METHOD_LABEL[result.method]}. Check it over, then save.
+                  {result.imageUrl && " The photo will be attached."}
+                </p>
+              )}
               {result.warnings.map((w) => (
                 <p key={w} className="text-spice">
                   {w}

@@ -1,4 +1,4 @@
-import { draftHasContent, type ImportResult, type RecipeDraft } from "./draft";
+import { draftHasContent, draftIsEmpty, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
 import { getRecipeExtractor, getVideoExtractor } from "./llm";
 import { VideoUnavailable } from "./llm/provider";
 import type { PageMeta } from "./page-meta";
@@ -56,20 +56,20 @@ export function youtubeLengthSeconds(html: string): number | null {
   return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
+/** Plenty of shorts show ingredients with no quantities at all; say so rather than inventing them. */
+function lacksAmounts(draft: RecipeDraft): boolean {
+  return draft.ingredients.length >= 3 && draft.ingredients.filter((i) => /\d/.test(i)).length * 2 < draft.ingredients.length;
+}
+
 /**
  * YouTube (Shorts included), best first:
  *  1. Gemini watches the video - the only thing that works when the recipe is
  *     spoken or on screen, which is the norm for a short.
  *  2. the configured LLM over the description, which for longer videos often
  *     holds the whole recipe.
- * Returns null when both come up empty, having explained why in `warnings`, so
- * the caller can fall back to page metadata.
+ * Comes back with an `EmptyImport` verdict when both come up empty, having explained
+ * why in `warnings`, so the caller knows whether anything actually read the video.
  */
-/** Plenty of shorts show ingredients with no quantities at all; say so rather than inventing them. */
-function lacksAmounts(draft: RecipeDraft): boolean {
-  return draft.ingredients.length >= 3 && draft.ingredients.filter((i) => /\d/.test(i)).length * 2 < draft.ingredients.length;
-}
-
 export async function importYouTubeVideo(args: {
   videoId: string;
   finalUrl: string;
@@ -77,10 +77,16 @@ export async function importYouTubeVideo(args: {
   meta: PageMeta;
   sourceName: string | null;
   warnings: string[];
-}): Promise<ImportResult | null> {
+}): Promise<ImportResult | EmptyImport> {
   const description = youtubeDescription(args.html) ?? args.meta.description;
   const common = { imageUrl: args.meta.imageUrl, sourceUrl: args.finalUrl, sourceName: args.sourceName };
   const { warnings } = args;
+  /**
+   * Set once a model has watched the video and come back with nothing. Only watching counts:
+   * a description is not the video's content, and plenty of recipe videos have a boilerplate
+   * one, so failing to find a recipe in it says nothing about the video itself.
+   */
+  let ruledOut = false;
 
   const watcher = getVideoExtractor();
   // The cook is told only that watching wasn't available; this is where the owner finds out why.
@@ -104,7 +110,10 @@ export async function importYouTubeVideo(args: {
       if (lacksAmounts(draft)) warnings.push("The video never gave amounts, so the ingredients have none - add them as you learn them.");
       return { ...common, draft, method: "video", warnings };
     }
-    if (draft) warnings.push("The AI watched the video but didn't find a recipe in it.");
+    if (draft) {
+      warnings.push("The AI watched the video but didn't find a recipe in it.");
+      ruledOut = draftIsEmpty(draft);
+    }
   }
 
   const extractor = getRecipeExtractor();
@@ -134,5 +143,5 @@ export async function importYouTubeVideo(args: {
       ? "Couldn't get a recipe out of that video, and its description doesn't hold one either."
       : "Couldn't read that video. Try pasting the description as text, or enter it manually.",
   );
-  return null;
+  return ruledOut ? "no-recipe" : "unread";
 }

@@ -54,7 +54,15 @@ export const voiceDraftSchema = recipeDraftSchema.extend({
 });
 export type VoiceDraft = z.infer<typeof voiceDraftSchema>;
 
-export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "metadata";
+export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "metadata" | "none";
+
+/**
+ * Why an import came back without a recipe. They are worth telling apart: only "unread"
+ * leaves any reason to trust what the page says about itself, because once something has
+ * actually read the content and found no recipe, the page's title and blurb belong to
+ * whatever else it is - a vlog, a product listing - and are not a recipe at all.
+ */
+export type EmptyImport = "no-recipe" | "unread";
 
 export type ImportResult = {
   draft: RecipeDraft;
@@ -72,6 +80,15 @@ export type ImportResult = {
 /** Does the draft carry enough to be worth showing? */
 export function draftHasContent(d: RecipeDraft): boolean {
   return Boolean(d.title) && (d.ingredients.length > 0 || d.steps.length > 0);
+}
+
+/**
+ * Nothing a recipe could be built from. Stricter than `!draftHasContent`, which also insists
+ * on a name: a draft with ingredients and steps but no title is a recipe the model forgot to
+ * name, and is not evidence that the source held no recipe.
+ */
+export function draftIsEmpty(d: RecipeDraft): boolean {
+  return d.ingredients.length === 0 && d.steps.length === 0;
 }
 
 export function clean(s: string | null | undefined): string | null {
