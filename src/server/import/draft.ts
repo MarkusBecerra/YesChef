@@ -54,7 +54,15 @@ export const voiceDraftSchema = recipeDraftSchema.extend({
 });
 export type VoiceDraft = z.infer<typeof voiceDraftSchema>;
 
-export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "metadata";
+export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "metadata" | "none";
+
+/**
+ * Why an import came back without a recipe. They are worth telling apart: only "unread"
+ * leaves any reason to trust what the page says about itself, because once something has
+ * actually read the content and found no recipe, the page's title and blurb belong to
+ * whatever else it is - a vlog, a product listing - and are not a recipe at all.
+ */
+export type EmptyImport = "no-recipe" | "unread";
 
 export type ImportResult = {
   draft: RecipeDraft;

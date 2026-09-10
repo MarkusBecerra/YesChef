@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { clean, draftHasContent, EMPTY_DRAFT, type ImportResult, type RecipeDraft } from "./draft";
+import { clean, draftHasContent, EMPTY_DRAFT, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
 import { fetchHtml, hostName, ImportError } from "./fetch-page";
 import { extractJsonLdRecipe } from "./jsonld";
 import { getRecipeExtractor } from "./llm";
@@ -16,7 +16,7 @@ export { importRecipeFromSpeech, transcribeRecipeAudio } from "./voice";
  *  1. schema.org/Recipe JSON-LD (most recipe blogs, some aggregators) - exact and free
  *  2. for YouTube, a model that watches the video, then its description
  *  3. the configured LLM over the page's readable text (plain blogs)
- *  4. page metadata only (title, description, image) so the form isn't empty
+ *  4. nothing - a blank form, seeded from page metadata only when nothing read the page
  */
 export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult> {
   const { html, finalUrl } = await fetchHtml(rawUrl);
@@ -43,11 +43,12 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
   if (videoId) {
     const watched = await importYouTubeVideo({ videoId, finalUrl, html, meta, sourceName, warnings });
     // A YouTube page's own text is player chrome; there is nothing further to try.
-    return watched ?? metadataFallback(meta, finalUrl, sourceName, warnings);
+    return typeof watched === "string" ? emptyImport(meta, finalUrl, sourceName, warnings, watched) : watched;
   }
 
   const text = extractReadableText($);
   const extractor = getRecipeExtractor();
+  let outcome: EmptyImport = "unread";
   if (extractor && text.length > 80) {
     let draft: RecipeDraft;
     try {
@@ -62,18 +63,30 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
       return { draft, imageUrl: meta.imageUrl, sourceUrl: finalUrl, sourceName, method: "llm", warnings };
     }
     warnings.push("The AI couldn't find a recipe on that page.");
+    outcome = "no-recipe";
   } else if (!extractor) {
     warnings.push("No structured recipe data on that page, and no AI parser is configured (set ANTHROPIC_API_KEY, the Anthropic federation IDs, or GEMINI_API_KEY).");
   } else {
     warnings.push("That page had almost no readable text - it probably needs a login. Copy the caption and use \"Paste text\" instead.");
   }
 
-  return metadataFallback(meta, finalUrl, sourceName, warnings);
+  return emptyImport(meta, finalUrl, sourceName, warnings, outcome);
 }
 
-/** Last resort: what the page said about itself, so the form isn't empty. */
-function metadataFallback(meta: PageMeta, finalUrl: string, sourceName: string | null, warnings: string[]): ImportResult {
+/**
+ * Nothing came back with a recipe. What the page says about itself is worth seeding the form
+ * with only when nothing actually read it - a login wall, or no AI configured - because then
+ * its title is the one lead there is. Once something has read the page and found no recipe,
+ * the title and blurb belong to whatever else it is about, so the form opens blank: a cook
+ * looking at a non-recipe video should see that nothing was found, not a filled-in title and
+ * a blurb that make a failed import look like a successful one.
+ */
+function emptyImport(meta: PageMeta, finalUrl: string, sourceName: string | null, warnings: string[], outcome: EmptyImport): ImportResult {
+  const source = { sourceUrl: finalUrl, sourceName, warnings };
+  // The photo goes the same way as the title: an unrelated video's thumbnail is not this recipe's.
+  if (outcome === "no-recipe") return { draft: { ...EMPTY_DRAFT }, imageUrl: null, method: "none", ...source };
+
   const draft: RecipeDraft = { ...EMPTY_DRAFT, title: clean(meta.title), description: clean(meta.description) };
   if (!draft.title) throw new ImportError("Couldn't find a recipe or even a title on that page. Try entering it manually.", 422);
-  return { draft, imageUrl: meta.imageUrl, sourceUrl: finalUrl, sourceName, method: "metadata", warnings };
+  return { draft, imageUrl: meta.imageUrl, method: "metadata", ...source };
 }

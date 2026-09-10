@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { EMPTY_DRAFT, type RecipeDraft } from "./draft";
+import { EMPTY_DRAFT, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
 import { VideoUnavailable } from "./llm/provider";
 import type { PageMeta } from "./page-meta";
 import { importYouTubeVideo, watchUrl, youtubeDescription, youtubeLengthSeconds, youtubeVideoId } from "./youtube";
@@ -91,9 +91,15 @@ beforeEach(() => {
   getRecipeExtractor.mockReturnValue({ name: "text", extract: readText });
 });
 
+/** Unwraps the happy path, so a test that wants a draft doesn't restate the verdict union. */
+function found(outcome: ImportResult | EmptyImport): ImportResult {
+  if (typeof outcome === "string") throw new Error(`expected an import, got "${outcome}"`);
+  return outcome;
+}
+
 describe("importYouTubeVideo", () => {
   it("watches the video first, keeping the thumbnail as the photo", async () => {
-    const result = await importYouTubeVideo(args());
+    const result = found(await importYouTubeVideo(args()));
     expect(watch).toHaveBeenCalledWith({
       videoUrl: "https://www.youtube.com/watch?v=Y9LX8QylWwo",
       title: META.title,
@@ -102,7 +108,7 @@ describe("importYouTubeVideo", () => {
     });
     expect(readText).not.toHaveBeenCalled();
     expect(result).toMatchObject({ method: "video", imageUrl: META.imageUrl, sourceName: "YouTube" });
-    expect(result?.warnings[0]).toMatch(/An AI watched the video/);
+    expect(result.warnings[0]).toMatch(/An AI watched the video/);
   });
 
   it("prefers the inlined description over the truncated meta one, and passes the runtime along", async () => {
@@ -115,34 +121,56 @@ describe("importYouTubeVideo", () => {
   it("falls back to the description when watching fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     watch.mockRejectedValue(new Error("timed out"));
-    const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
+    const result = found(await importYouTubeVideo(args(DESCRIPTION_HTML)));
     expect(readText).toHaveBeenCalled();
-    expect(result?.method).toBe("llm");
-    expect(result?.warnings.join(" ")).toMatch(/Couldn't watch the video/);
+    expect(result.method).toBe("llm");
+    expect(result.warnings.join(" ")).toMatch(/Couldn't watch the video/);
   });
 
   it("passes a provider's own explanation through as the warning", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     watch.mockRejectedValue(new VideoUnavailable("Gemini's quota is used up for now."));
-    const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
-    expect(result?.method).toBe("llm");
-    expect(result?.warnings).toContain("Gemini's quota is used up for now.");
+    const result = found(await importYouTubeVideo(args(DESCRIPTION_HTML)));
+    expect(result.method).toBe("llm");
+    expect(result.warnings).toContain("Gemini's quota is used up for now.");
   });
 
   it("keeps the missing key out of the cook's warning, but logs it for the owner", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     getVideoExtractor.mockReturnValue(null);
-    const result = await importYouTubeVideo(args(DESCRIPTION_HTML));
-    expect(result?.method).toBe("llm");
-    expect(result?.warnings[0]).toMatch(/watching the video wasn't available/);
-    expect(result?.warnings.join(" ")).not.toMatch(/GEMINI_API_KEY/);
+    const result = found(await importYouTubeVideo(args(DESCRIPTION_HTML)));
+    expect(result.method).toBe("llm");
+    expect(result.warnings[0]).toMatch(/watching the video wasn't available/);
+    expect(result.warnings.join(" ")).not.toMatch(/GEMINI_API_KEY/);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("GEMINI_API_KEY"));
   });
 
-  it("gives up rather than returning an empty draft", async () => {
+  it("gives up rather than returning an empty draft, and says an AI ruled the video out", async () => {
     watch.mockResolvedValue(EMPTY_DRAFT);
     const call = args();
-    expect(await importYouTubeVideo(call)).toBeNull();
+    expect(await importYouTubeVideo(call)).toBe("no-recipe");
     expect(call.warnings.join(" ")).toMatch(/didn't find a recipe/);
+  });
+
+  it("ruled it out when only the description could be read and held no recipe", async () => {
+    getVideoExtractor.mockReturnValue(null);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    readText.mockResolvedValue(EMPTY_DRAFT);
+    expect(await importYouTubeVideo(args(DESCRIPTION_HTML))).toBe("no-recipe");
+  });
+
+  it("says nothing read it when there is no model to read it with", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    getVideoExtractor.mockReturnValue(null);
+    getRecipeExtractor.mockReturnValue(null);
+    expect(await importYouTubeVideo(args(DESCRIPTION_HTML))).toBe("unread");
+  });
+
+  it("says nothing read it when watching failed and there was no description to fall back on", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    watch.mockRejectedValue(new Error("timed out"));
+    const call = { ...args(), meta: { ...META, title: "Short", description: null } };
+    expect(await importYouTubeVideo(call)).toBe("unread");
+    expect(readText).not.toHaveBeenCalled();
   });
 });
