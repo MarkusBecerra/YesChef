@@ -72,6 +72,7 @@ const META: PageMeta = {
   description: "See comments for recipe link",
   imageUrl: "https://i.ytimg.com/vi/Y9LX8QylWwo/maxresdefault.jpg",
   siteName: "YouTube",
+  language: null,
 };
 const DRAFT: RecipeDraft = { ...EMPTY_DRAFT, title: "Pad Thai", ingredients: ["8 oz rice noodles"], steps: ["Soak the noodles."] };
 const args = (html = "") => ({

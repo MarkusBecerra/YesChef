@@ -86,18 +86,26 @@ describe("JSON-LD recipe import", () => {
   it("reads the page's declared language so a non-English recipe can be flagged", () => {
     const page = (inLanguage: string) =>
       `<script type="application/ld+json">{"@type":"Recipe","name":"Tortilla","inLanguage":${inLanguage},"recipeIngredient":["5 huevos"]}</script>`;
-    expect(extractJsonLdRecipe(cheerio.load(page('"es"')))!.language).toBe("es");
-    expect(extractJsonLdRecipe(cheerio.load(page('{"@type":"Language","name":"es-ES"}')))!.language).toBe("es-ES");
-    expect(extractJsonLdRecipe(cheerio.load(graphPage))!.language).toBeNull();
+    expect(extractJsonLdRecipe(cheerio.load(page('"es"')))!.language).toEqual(["es"]);
+    // schema.org's documented Language shape puts the code in alternateName.
+    expect(extractJsonLdRecipe(cheerio.load(page('{"@type":"Language","name":"Spanish","alternateName":"es"}')))!.language).toEqual(["es"]);
+    expect(extractJsonLdRecipe(cheerio.load(page('{"@type":"Language","name":"Spanish"}')))!.language).toEqual(["Spanish"]);
+    expect(extractJsonLdRecipe(cheerio.load(page('["es","en"]')))!.language).toEqual(["es", "en"]);
+    expect(extractJsonLdRecipe(cheerio.load(page('"es, en"')))!.language).toEqual(["es", "en"]);
+    expect(extractJsonLdRecipe(cheerio.load(graphPage))!.language).toEqual([]);
   });
 
   it("warns, by name, when the declared language is not English", () => {
-    expect(nonEnglishWarning("es")).toMatch(/Spanish/);
-    expect(nonEnglishWarning("fr-CA")).toMatch(/French/);
-    expect(nonEnglishWarning("en")).toBeNull();
-    expect(nonEnglishWarning("en-GB")).toBeNull();
-    expect(nonEnglishWarning("EN_US")).toBeNull();
-    expect(nonEnglishWarning(null)).toBeNull();
-    expect(nonEnglishWarning("not a language tag")).toBeNull();
+    expect(nonEnglishWarning(["es"])).toMatch(/in Spanish/);
+    expect(nonEnglishWarning(["fr-CA"])).toMatch(/in French/);
+    expect(nonEnglishWarning(["Spanish"])).toMatch(/in Spanish/);
+    expect(nonEnglishWarning(["es", "de"])).toMatch(/in Spanish/);
+  });
+
+  it("stays quiet for English in any spelling, for a page that also offers English, and for junk", () => {
+    for (const tag of ["en", "en-GB", "EN_US", "eng", "English", "en-x-foo"]) expect(nonEnglishWarning([tag])).toBeNull();
+    expect(nonEnglishWarning(["es", "en"])).toBeNull();
+    expect(nonEnglishWarning([])).toBeNull();
+    for (const tag of ["not a language tag", "x-private", "  ", "zz"]) expect(nonEnglishWarning([tag])).toBeNull();
   });
 });

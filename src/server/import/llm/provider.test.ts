@@ -12,7 +12,8 @@ describe("import prompts", () => {
     expect(prompt).toMatch(/in English, whatever language the source is in/);
   });
 
-  it("asks the model to leave quantities and units alone when it translates", () => {
-    expect(EXTRACTION_SYSTEM_PROMPT).toMatch(/do not convert/i);
+  it("asks the model to translate unit names but never convert between measurement systems", () => {
+    expect(EXTRACTION_SYSTEM_PROMPT).toMatch(/translate unit names/i);
+    expect(EXTRACTION_SYSTEM_PROMPT).toMatch(/never convert/i);
   });
 });

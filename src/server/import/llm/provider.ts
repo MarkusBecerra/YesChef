@@ -32,7 +32,7 @@ export interface VideoRecipeExtractor {
 export class VideoUnavailable extends Error {}
 
 /** How the draft's fields are filled in, shared by every extractor. */
-const DRAFT_FIELD_RULES = `- Write the whole record in English, whatever language the source is in: translate the title, description, ingredients, steps, notes and tags. Keep a dish's proper name when that is what English speakers call it ("Pad Thai", "Coq au Vin", "Tortilla de Patatas") and say what it is in the description. Keep quantities and units exactly as given - do not convert them.
+const DRAFT_FIELD_RULES = `- Write the whole record in English, whatever language the source is in: translate the title, description, ingredients, steps, yield, notes and tags. Keep a dish's proper name when that is what English speakers call it ("Pad Thai", "Coq au Vin", "Tortilla de Patatas") and say what it is in the description. Translate unit names ("2 EL" -> "2 tbsp", "1 Prise" -> "1 pinch") but keep every amount and its measurement system as given - never convert grams to ounces or litres to cups.
 - ingredients: one entry per ingredient, including quantity and unit (e.g. "2 cups all-purpose flour").
 - steps: one entry per step, in order, without numbering. A method run together as prose becomes one step per action.
 - Times are whole minutes. Leave a time null when it isn't stated.
