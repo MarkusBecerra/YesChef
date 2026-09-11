@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { describe, expect, it } from "vitest";
-import { cleanTags, extractJsonLdRecipe, parseIsoDuration } from "./jsonld";
+import { cleanTags, extractJsonLdRecipe, nonEnglishWarning, parseIsoDuration } from "./jsonld";
 
 const graphPage = `<!doctype html><html><head>
 <script type="application/ld+json">{ not json }</script>
@@ -81,5 +81,23 @@ describe("JSON-LD recipe import", () => {
   it("takes the first category from a comma-joined string", () => {
     const html = `<script type="application/ld+json">{"@type":"Recipe","name":"P","recipeIngredient":["a"],"recipeCategory":"Breakfast, Brunch, Main course"}</script>`;
     expect(extractJsonLdRecipe(cheerio.load(html))!.draft.category).toBe("Breakfast");
+  });
+
+  it("reads the page's declared language so a non-English recipe can be flagged", () => {
+    const page = (inLanguage: string) =>
+      `<script type="application/ld+json">{"@type":"Recipe","name":"Tortilla","inLanguage":${inLanguage},"recipeIngredient":["5 huevos"]}</script>`;
+    expect(extractJsonLdRecipe(cheerio.load(page('"es"')))!.language).toBe("es");
+    expect(extractJsonLdRecipe(cheerio.load(page('{"@type":"Language","name":"es-ES"}')))!.language).toBe("es-ES");
+    expect(extractJsonLdRecipe(cheerio.load(graphPage))!.language).toBeNull();
+  });
+
+  it("warns, by name, when the declared language is not English", () => {
+    expect(nonEnglishWarning("es")).toMatch(/Spanish/);
+    expect(nonEnglishWarning("fr-CA")).toMatch(/French/);
+    expect(nonEnglishWarning("en")).toBeNull();
+    expect(nonEnglishWarning("en-GB")).toBeNull();
+    expect(nonEnglishWarning("EN_US")).toBeNull();
+    expect(nonEnglishWarning(null)).toBeNull();
+    expect(nonEnglishWarning("not a language tag")).toBeNull();
   });
 });

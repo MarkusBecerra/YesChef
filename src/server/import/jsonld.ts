@@ -129,7 +129,25 @@ export function cleanTags(raw: string[]): string[] {
   return out;
 }
 
-export type JsonLdRecipe = { draft: RecipeDraft; imageUrl: string | null; author: string | null };
+/**
+ * Structured data is copied as written, so a page in another language stays in that
+ * language. Name it in a warning; null for English, or a tag the runtime can't read.
+ */
+export function nonEnglishWarning(tag: string | null): string | null {
+  if (!tag) return null;
+  const canonical = tag.trim().replace(/_/g, "-");
+  if (/^en(?:-|$)/i.test(canonical)) return null;
+  let name: string | undefined;
+  try {
+    name = new Intl.DisplayNames(["en"], { type: "language", fallback: "none" }).of(canonical);
+  } catch {
+    return null;
+  }
+  if (!name) return null;
+  return `The recipe is in ${name}; it was imported as written.`;
+}
+
+export type JsonLdRecipe = { draft: RecipeDraft; imageUrl: string | null; author: string | null; language: string | null };
 
 /** Parse every <script type="application/ld+json"> on the page and map the first Recipe found. */
 export function extractJsonLdRecipe($: CheerioAPI): JsonLdRecipe | null {
@@ -167,7 +185,7 @@ export function extractJsonLdRecipe($: CheerioAPI): JsonLdRecipe | null {
       category: category ? category.slice(0, 60) : null,
       tags: Array.from(new Set(tags)),
     };
-    return { draft, imageUrl: imageOf(node.image), author: textOf(node.author) };
+    return { draft, imageUrl: imageOf(node.image), author: textOf(node.author), language: textOf(node.inLanguage) };
   }
   return null;
 }
