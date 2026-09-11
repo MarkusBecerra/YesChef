@@ -6,8 +6,12 @@ import {
   buildUserPrompt,
   buildVideoPrompt,
   EXTRACTION_SYSTEM_PROMPT,
+  PHOTO_SYSTEM_PROMPT,
+  PHOTO_USER_PROMPT,
   VIDEO_SYSTEM_PROMPT,
   type ExtractInput,
+  type ImageInput,
+  type ImageRecipeExtractor,
   type RecipeExtractor,
   TRANSCRIPTION_PROMPT,
   VideoUnavailable,
@@ -91,6 +95,28 @@ export function createGeminiExtractor(): RecipeExtractor {
         model,
         contents: buildUserPrompt(input),
         config: { systemInstruction: EXTRACTION_SYSTEM_PROMPT, ...responseConfig },
+      });
+      return parseDraft(response.text);
+    },
+  };
+}
+
+/** Gemini reading a photo of a recipe card or cookbook page. */
+export function createGeminiImageExtractor(): ImageRecipeExtractor {
+  const ai = client();
+  const model = modelName();
+  return {
+    name: `gemini:${model}`,
+    async extractFromImage({ bytes, mimeType }: ImageInput): Promise<RecipeDraft> {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [
+          {
+            role: "user",
+            parts: [{ inlineData: { mimeType, data: Buffer.from(bytes).toString("base64") } }, { text: PHOTO_USER_PROMPT }],
+          },
+        ],
+        config: { systemInstruction: PHOTO_SYSTEM_PROMPT, ...responseConfig },
       });
       return parseDraft(response.text);
     },

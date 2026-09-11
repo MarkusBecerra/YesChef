@@ -8,8 +8,12 @@ import {
   buildSpeechPrompt,
   buildUserPrompt,
   EXTRACTION_SYSTEM_PROMPT,
+  PHOTO_SYSTEM_PROMPT,
+  PHOTO_USER_PROMPT,
   VOICE_SYSTEM_PROMPT,
   type ExtractInput,
+  type ImageInput,
+  type ImageRecipeExtractor,
   type RecipeExtractor,
   type SpeechInput,
   type SpeechRecipeExtractor,
@@ -82,6 +86,34 @@ export function createAnthropicSpeechExtractor(): SpeechRecipeExtractor {
         messages: [{ role: "user", content: buildSpeechPrompt(input) }],
       });
       if (response.stop_reason === "refusal") throw new Error("The AI declined to write this recipe up");
+      if (!response.parsed_output) throw new Error("The AI returned an unreadable answer");
+      return response.parsed_output;
+    },
+  };
+}
+
+/** The same model reading a photo of a recipe card or cookbook page. */
+export function createAnthropicImageExtractor(): ImageRecipeExtractor {
+  const model = process.env.LLM_MODEL?.trim() || DEFAULT_MODEL;
+  return {
+    name: `anthropic:${model}`,
+    async extractFromImage({ bytes, mimeType }: ImageInput): Promise<RecipeDraft> {
+      const response = await getClient().messages.parse({
+        model,
+        max_tokens: 8000,
+        output_config: { effort: "low", format: zodOutputFormat(recipeDraftSchema) },
+        system: PHOTO_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mimeType, data: Buffer.from(bytes).toString("base64") } },
+              { type: "text", text: PHOTO_USER_PROMPT },
+            ],
+          },
+        ],
+      });
+      if (response.stop_reason === "refusal") throw new Error("The AI declined to read this photo");
       if (!response.parsed_output) throw new Error("The AI returned an unreadable answer");
       return response.parsed_output;
     },

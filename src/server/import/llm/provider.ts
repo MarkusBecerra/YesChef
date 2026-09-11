@@ -89,6 +89,33 @@ export interface SpeechRecipeExtractor {
   extractFromSpeech(input: SpeechInput): Promise<VoiceDraft>;
 }
 
+/** The formats both vision models read. The browser re-encodes to JPEG first, so HEIC never gets here. */
+export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
+export type ImageMimeType = (typeof IMAGE_MIME_TYPES)[number];
+
+export type ImageInput = { bytes: Uint8Array; mimeType: ImageMimeType };
+
+/** Reads a written recipe out of a photo: a card, a cookbook page, a clipping. */
+export interface ImageRecipeExtractor {
+  readonly name: string;
+  extractFromImage(input: ImageInput): Promise<RecipeDraft>;
+}
+
+/**
+ * A photo is a page the model has to read rather than text it is handed, so the rules are
+ * about legibility: keep what can be read, mark what can't, and never fill a gap by guessing.
+ */
+export const PHOTO_SYSTEM_PROMPT = `You read a photo of a written recipe and turn it into a recipe record. The photo is whatever the cook had to hand: a handwritten recipe card, a cookbook or magazine page, a printed clipping, a screenshot of a recipe.
+
+Rules:
+- Use only what is written in the photo. Never invent an ingredient, a quantity, a time or a step that isn't there.
+- Handwriting and old print are hard to read. Keep every word you can make out; where a word is genuinely illegible, write [?] in its place rather than guessing. Never guess a quantity.
+- If the photo holds more than one recipe, write up the most complete one and name the others in notes.
+- If there is no written recipe in the photo - a plate of food, a shopping list, something else entirely - return title null with empty ingredients and steps.
+${DRAFT_FIELD_RULES}`;
+
+export const PHOTO_USER_PROMPT = "Read the recipe in this photo and write it down.";
+
 export type TranscribeInput = { bytes: Uint8Array; mimeType: string };
 
 /** Turns a recording into text, for browsers with no dictation of their own. */
