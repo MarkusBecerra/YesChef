@@ -8,6 +8,7 @@ import { importYouTubeVideo, youtubeVideoId } from "./youtube";
 
 export { ImportError } from "./fetch-page";
 export type { ImportResult } from "./draft";
+export { importRecipeFromPhoto } from "./photo";
 export { importRecipeFromText } from "./text";
 export { importRecipeFromSpeech, transcribeRecipeAudio } from "./voice";
 

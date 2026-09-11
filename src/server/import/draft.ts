@@ -54,7 +54,7 @@ export const voiceDraftSchema = recipeDraftSchema.extend({
 });
 export type VoiceDraft = z.infer<typeof voiceDraftSchema>;
 
-export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "metadata" | "none";
+export type ImportMethod = "jsonld" | "llm" | "text" | "video" | "voice" | "photo" | "metadata" | "none";
 
 /**
  * Why an import came back without a recipe. They are worth telling apart: only "unread"

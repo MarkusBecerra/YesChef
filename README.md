@@ -7,6 +7,7 @@ A small, mobile-first recipe log: track what I've actually cooked, how it went, 
 - Recipe database: ingredients, steps, times, servings/yield, difficulty, category, tags, source, cost, notes, photo
 - Import from a link: schema.org recipe data first, an AI parser (Claude or Gemini) for unstructured pages, manual cleanup before saving
 - **Import by talking**: describe a recipe you know by heart and the app writes it down, then asks about whatever you left out
+- **Import from a photo**: snap a handwritten card, a cookbook page or a clipping and the app reads it into the form, marking anything it couldn't make out
 - Cook log: log each cook with a date, optional rating, and notes; cook count and history per recipe
 - Search across title, ingredients, and tags; filter by favorites, difficulty, tag; seven sort orders
 - Accounts, gated by single-use invite codes only the owner can see and hands out from the Account page
@@ -20,6 +21,7 @@ From the [design doc](https://claude.ai/code/artifact/355aac9b-df7e-457e-9adc-9a
 - [x] Import via link (schema.org first, AI fallback for unstructured pages)
 - [x] Import via pasted text and YouTube/Shorts video
 - [x] Import by talking (voice, with follow-up questions)
+- [x] Import from a photo of a recipe card or cookbook page
 - [x] Cook log & mastery tracking (cook count + history)
 - [x] Tags, categories & search
 - [x] Invite-only accounts
@@ -107,6 +109,7 @@ All endpoints live under `/api/v1` and return JSON. Authenticate with the sessio
 | POST | `/import/text` | `{ text, sourceUrl? }` → a recipe draft from pasted text |
 | POST | `/import/voice` | `{ transcript, previous?, answers? }` → a draft plus follow-up questions |
 | POST | `/import/voice/audio` | multipart `audio` → `{ transcript }` |
+| POST | `/import/photo` | multipart `photo` (a recipe card or cookbook page) → a recipe draft to review |
 
 ## Deploying to Vercel
 

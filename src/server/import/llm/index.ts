@@ -1,9 +1,16 @@
-import { createAnthropicExtractor, createAnthropicSpeechExtractor } from "./anthropic";
-import { createGeminiExtractor, createGeminiSpeechExtractor, createGeminiTranscriber, createGeminiVideoExtractor } from "./gemini";
+import { createAnthropicExtractor, createAnthropicImageExtractor, createAnthropicSpeechExtractor } from "./anthropic";
+import {
+  createGeminiExtractor,
+  createGeminiImageExtractor,
+  createGeminiSpeechExtractor,
+  createGeminiTranscriber,
+  createGeminiVideoExtractor,
+} from "./gemini";
 import {
   configuredProvider,
   llmDisabled,
   type AudioTranscriber,
+  type ImageRecipeExtractor,
   type RecipeExtractor,
   type SpeechRecipeExtractor,
   type VideoRecipeExtractor,
@@ -31,6 +38,18 @@ export function getRecipeExtractor(): RecipeExtractor | null {
 export function getVideoExtractor(): VideoRecipeExtractor | null {
   if (llmDisabled() || !process.env.GEMINI_API_KEY?.trim()) return null;
   return createGeminiVideoExtractor();
+}
+
+/** The extractor that reads a photo of a recipe. Same provider as the text one: both take images. */
+export function getImageExtractor(): ImageRecipeExtractor | null {
+  switch (configuredProvider()) {
+    case "anthropic":
+      return createAnthropicImageExtractor();
+    case "gemini":
+      return createGeminiImageExtractor();
+    default:
+      return null;
+  }
 }
 
 /** The extractor that turns a spoken recipe into a draft. Same provider as the text one. */
