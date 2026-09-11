@@ -7,6 +7,8 @@ export type PageMeta = {
   description: string | null;
   imageUrl: string | null;
   siteName: string | null;
+  /** What the page says it is written in: <html lang>, else og:locale. As written ("es", "fr_FR"). */
+  language: string | null;
 };
 
 export function extractPageMeta($: CheerioAPI, pageUrl: string): PageMeta {
@@ -24,6 +26,7 @@ export function extractPageMeta($: CheerioAPI, pageUrl: string): PageMeta {
     description: meta('meta[property="og:description"]') ?? meta('meta[name="description"]') ?? meta('meta[name="twitter:description"]'),
     imageUrl: abs(meta('meta[property="og:image"]') ?? meta('meta[name="twitter:image"]')),
     siteName: meta('meta[property="og:site_name"]'),
+    language: clean($("html").first().attr("lang")) ?? meta('meta[property="og:locale"]'),
   };
 }
 

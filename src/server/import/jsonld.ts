@@ -129,7 +129,49 @@ export function cleanTags(raw: string[]): string[] {
   return out;
 }
 
-export type JsonLdRecipe = { draft: RecipeDraft; imageUrl: string | null; author: string | null };
+/**
+ * A language as pages declare it - "es", "es-ES", "es_ES", "eng", or plainly "Spanish" -
+ * as { english, name }. null when the runtime can't make sense of the tag.
+ */
+function describeLanguage(tag: string): { english: boolean; name: string } | null {
+  const canonical = tag.trim().replace(/_/g, "-");
+  if (!canonical) return null;
+  try {
+    const code = new Intl.Locale(canonical).language;
+    const name = new Intl.DisplayNames(["en"], { type: "language", fallback: "none" }).of(code);
+    if (name) return { english: code === "en", name };
+    // Not a code the runtime knows. A plain word is a name ("Spanish"), anything else is noise.
+    if (/^[a-z]{4,}$/i.test(canonical)) return { english: /^english$/i.test(canonical), name: canonical[0].toUpperCase() + canonical.slice(1).toLowerCase() };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Structured data is copied as written, so a page in another language stays in that
+ * language. Name the first one in a warning; null when any of the declared languages is
+ * English, or none of them can be read.
+ */
+export function nonEnglishWarning(tags: readonly string[]): string | null {
+  const known = tags.map(describeLanguage).filter((l) => l !== null);
+  if (known.length === 0 || known.some((l) => l.english)) return null;
+  return `The recipe is in ${known[0].name}; it was imported as written.`;
+}
+
+/** schema.org inLanguage: a tag, a list of tags, or a Language object whose code is in alternateName. */
+function languagesOf(value: unknown): string[] {
+  if (isObj(value)) return listOf(value.alternateName ?? value.name);
+  return listOf(value);
+}
+
+export type JsonLdRecipe = {
+  draft: RecipeDraft;
+  imageUrl: string | null;
+  author: string | null;
+  /** Every language the recipe node declared, as written; empty when it declared none. */
+  language: string[];
+};
 
 /** Parse every <script type="application/ld+json"> on the page and map the first Recipe found. */
 export function extractJsonLdRecipe($: CheerioAPI): JsonLdRecipe | null {
@@ -167,7 +209,7 @@ export function extractJsonLdRecipe($: CheerioAPI): JsonLdRecipe | null {
       category: category ? category.slice(0, 60) : null,
       tags: Array.from(new Set(tags)),
     };
-    return { draft, imageUrl: imageOf(node.image), author: textOf(node.author) };
+    return { draft, imageUrl: imageOf(node.image), author: textOf(node.author), language: languagesOf(node.inLanguage) };
   }
   return null;
 }

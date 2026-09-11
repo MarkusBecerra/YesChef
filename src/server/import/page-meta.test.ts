@@ -14,6 +14,7 @@ describe("page metadata and text", () => {
       description: "Flaky.",
       imageUrl: "https://pie.example/img/pie.jpg",
       siteName: "Pie Blog",
+      language: null,
     });
   });
 
@@ -23,6 +24,7 @@ describe("page metadata and text", () => {
       description: null,
       imageUrl: null,
       siteName: null,
+      language: null,
     });
   });
 
@@ -47,5 +49,11 @@ describe("page metadata and text", () => {
     expect(text).toContain("Ingredients");
     expect(text).toContain("3 eggs");
     expect(text).toContain("Whisk.");
+  });
+
+  it("reads the page's language from <html lang>, else og:locale", () => {
+    expect(extractPageMeta(cheerio.load('<html lang="es"><head><meta property="og:locale" content="fr_FR"></head></html>'), "https://x.test/").language).toBe("es");
+    expect(extractPageMeta(cheerio.load('<html><head><meta property="og:locale" content="fr_FR"></head></html>'), "https://x.test/").language).toBe("fr_FR");
+    expect(extractPageMeta(cheerio.load("<html><head></head></html>"), "https://x.test/").language).toBeNull();
   });
 });

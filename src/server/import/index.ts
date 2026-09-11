@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { clean, draftHasContent, draftIsEmpty, EMPTY_DRAFT, type EmptyImport, type ImportResult, type RecipeDraft } from "./draft";
 import { fetchHtml, hostName, ImportError } from "./fetch-page";
-import { extractJsonLdRecipe } from "./jsonld";
+import { extractJsonLdRecipe, nonEnglishWarning } from "./jsonld";
 import { getRecipeExtractor } from "./llm";
 import { extractPageMeta, extractReadableText, type PageMeta } from "./page-meta";
 import { importYouTubeVideo, youtubeVideoId } from "./youtube";
@@ -29,6 +29,10 @@ export async function importRecipeFromUrl(rawUrl: string): Promise<ImportResult>
   if (structured && draftHasContent(structured.draft)) {
     if (structured.draft.steps.length === 0) warnings.push("No steps were found on the page.");
     if (structured.draft.ingredients.length === 0) warnings.push("No ingredients were found on the page.");
+    // Recipe nodes rarely carry inLanguage themselves (WordPress puts it on the WebPage node),
+    // so fall back to what the page as a whole declares.
+    const language = nonEnglishWarning(structured.language.length ? structured.language : meta.language ? [meta.language] : []);
+    if (language) warnings.push(language);
     return {
       draft: structured.draft,
       imageUrl: structured.imageUrl ?? meta.imageUrl,
