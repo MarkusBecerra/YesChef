@@ -31,6 +31,11 @@ describe("parseIngredient", () => {
       expect(parseIngredient("2 ⅓ cups water")).toEqual(parsed(2 + 1 / 3, "cup", "water"));
     });
 
+    it("reads the unicode fraction slash that web pages often use", () => {
+      expect(parseIngredient("1⁄2 cup sugar")).toEqual(parsed(0.5, "cup", "sugar"));
+      expect(parseIngredient("1 1⁄2 cups flour")).toEqual(parsed(1.5, "cup", "flour"));
+    });
+
     it("reads decimals", () => {
       expect(parseIngredient("1.5 kg potatoes")).toEqual(parsed(1.5, "kilogram", "potatoes"));
       expect(parseIngredient(".5 cup cream")).toEqual(parsed(0.5, "cup", "cream"));
@@ -68,6 +73,24 @@ describe("parseIngredient", () => {
     it("does not mistake a hyphenated word for a range", () => {
       expect(parseIngredient("2-inch piece ginger")).toEqual(parsed(null, null, "2-inch piece ginger"));
     });
+
+    it("reads 'or' ranges and any capitalisation of 'to'", () => {
+      expect(parseIngredient("1 or 2 eggs")).toEqual(parsed(1, null, "eggs", 2));
+      expect(parseIngredient("1 To 2 Tbsp Olive Oil")).toEqual(parsed(1, "tablespoon", "Olive Oil", 2));
+    });
+
+    it("accepts the unicode hyphen", () => {
+      expect(parseIngredient("1\u20102 cups flour")).toEqual(parsed(1, "cup", "flour", 2));
+    });
+
+    it("treats a whole number joined to a fraction by a hyphen as a mixed number, never a descending range", () => {
+      expect(parseIngredient("1-½ cups milk")).toEqual(parsed(1.5, "cup", "milk"));
+      expect(parseIngredient("1 - 1/2 cups milk")).toEqual(parsed(1.5, "cup", "milk"));
+    });
+
+    it("gives up on a range that runs downwards", () => {
+      expect(parseIngredient("3-2 cups flour")).toEqual(parsed(null, null, "3-2 cups flour"));
+    });
   });
 
   describe("units", () => {
@@ -80,6 +103,29 @@ describe("parseIngredient", () => {
       expect(parseIngredient("250 mL water").unit).toBe("milliliter");
       expect(parseIngredient("2 litres stock").unit).toBe("liter");
       expect(parseIngredient("1 pkg yeast").unit).toBe("package");
+      expect(parseIngredient("1 c. flour").unit).toBe("cup");
+      expect(parseIngredient("2 dl cream").unit).toBe("deciliter");
+    });
+
+    it("reads a unit written with an optional plural", () => {
+      expect(parseIngredient("1 cup(s) flour")).toEqual(parsed(1, "cup", "flour"));
+    });
+
+    it("drops punctuation that only separates the unit from the item", () => {
+      expect(parseIngredient("2 cups, divided")).toEqual(parsed(2, "cup", "divided"));
+      expect(parseIngredient("1 cup of")).toEqual(parsed(1, "cup", ""));
+    });
+
+    it("gives up on compound amounts rather than scaling half of them", () => {
+      expect(parseIngredient("1 lb 4 oz beef")).toEqual(parsed(null, null, "1 lb 4 oz beef"));
+      expect(parseIngredient("2 cups + 2 tbsp flour")).toEqual(parsed(null, null, "2 cups + 2 tbsp flour"));
+      expect(parseIngredient("1 cup plus 2 tbsp sugar")).toEqual(parsed(null, null, "1 cup plus 2 tbsp sugar"));
+      expect(parseIngredient("1 cup/250ml flour")).toEqual(parsed(null, null, "1 cup/250ml flour"));
+    });
+
+    it("still parses an item that merely starts with a number", () => {
+      expect(parseIngredient("1 cup 2% milk")).toEqual(parsed(1, "cup", "2% milk"));
+      expect(parseIngredient("2 cups 00 flour")).toEqual(parsed(2, "cup", "00 flour"));
     });
 
     it("reads a unit glued to the number", () => {

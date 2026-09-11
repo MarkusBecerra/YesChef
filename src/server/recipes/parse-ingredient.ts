@@ -10,7 +10,7 @@
 export const UNITS = {
   teaspoon: ["teaspoons", "teaspoon", "tsps", "tsp"],
   tablespoon: ["tablespoons", "tablespoon", "tbsps", "tbsp", "tbls", "tblsp", "tbs"],
-  cup: ["cups", "cup"],
+  cup: ["cups", "cup", "c"],
   "fluid ounce": ["fluid ounces", "fluid ounce", "fl. oz", "fl oz", "fl.oz"],
   ounce: ["ounces", "ounce", "oz"],
   pound: ["pounds", "pound", "lbs", "lb"],
@@ -18,6 +18,7 @@ export const UNITS = {
   kilogram: ["kilograms", "kilogram", "kgs", "kg"],
   milligram: ["milligrams", "milligram", "mg"],
   milliliter: ["milliliters", "millilitres", "milliliter", "millilitre", "ml"],
+  deciliter: ["deciliters", "decilitres", "deciliter", "decilitre", "dl"],
   liter: ["liters", "litres", "liter", "litre", "l"],
   pint: ["pints", "pint", "pt"],
   quart: ["quarts", "quart", "qt"],
@@ -71,31 +72,39 @@ const VULGAR: Record<string, number> = {
 };
 const VULGAR_CLASS = `[${Object.keys(VULGAR).join("")}]`;
 
-const FRACTION = String.raw`\d+/\d+`;
-// "1 1/2", "1-1/2" (some sites hyphenate a mixed number), "1½", "1 ½".
-const MIXED = String.raw`\d+(?:(?:\s+|-)${FRACTION}|\s*${VULGAR_CLASS})`;
+// Web pages often use the fraction slash (U+2044) instead of "/".
+const FRACTION = String.raw`\d+[/⁄]\d+`;
+// "1 1/2", "1-1/2" and "1 - 1/2" (some sites hyphenate a mixed number), "1½", "1 ½".
+// A whole number joined to a fraction is always a mixed number: read as a range it would run downwards.
+const MIXED = String.raw`\d+(?:(?:\s+|\s*-\s*)${FRACTION}|(?:\s*-)?\s*${VULGAR_CLASS})`;
 const NUMBER = String.raw`(?:${MIXED}|${FRACTION}|${VULGAR_CLASS}|\d*\.\d+|\d+)`;
-// "2-3", "2 - 3", "2–3", "2 to 3". The range is optional; the second group is then undefined.
-const RANGE_SEP = String.raw`(?:\s*[-–—]\s*|\s+to\s+)`;
-const LEADING_QUANTITY = new RegExp(`^(${NUMBER})(?:${RANGE_SEP}(${NUMBER}))?`);
+const DASHES = "-\u2010\u2011\u2012\u2013\u2014";
+// "2-3", "2 - 3", "2–3", "2 to 3", "1 or 2". The range is optional; the second group is then undefined.
+const RANGE_SEP = String.raw`(?:\s*[${DASHES}]\s*|\s+(?:to|or)\s+)`;
+const LEADING_QUANTITY = new RegExp(`^(${NUMBER})(?:${RANGE_SEP}(${NUMBER}))?`, "i");
 
 /** Every alias in one alternation, longest first so "tablespoons" wins over "tbs". */
 const UNIT_ALIASES = Object.entries(UNITS)
   .flatMap(([unit, aliases]) => aliases.map((alias) => ({ unit: unit as Unit, alias })))
   .sort((a, b) => b.alias.length - a.alias.length);
-const UNIT_PATTERN = new RegExp(
-  `^(${UNIT_ALIASES.map(({ alias }) => alias.replace(/[.]/g, "\\.").replace(/ /g, "\\s+")).join("|")})\\.?(?=$|[\\s,;:()/])`,
-  "i",
-);
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// A unit may carry an optional plural ("cup(s)") and a trailing period ("Tbsp."), and must end at a
+// word boundary so "g" never matches the start of "garlic".
+const UNIT = `(${UNIT_ALIASES.map(({ alias }) => escapeRegExp(alias).replace(/ /g, "\\s+")).join("|")})(?:\\(s\\))?\\.?(?=$|[\\s,;:()/])`;
+const UNIT_PATTERN = new RegExp(`^${UNIT}`, "i");
 const UNIT_BY_ALIAS = new Map(UNIT_ALIASES.map(({ unit, alias }) => [alias.toLowerCase(), unit]));
+// "1 lb 4 oz", "2 cups + 2 tbsp", "1 cup plus 2 tbsp", "1 cup/250ml": a second amount we would
+// otherwise drop on the floor, so the line comes back unparsed instead of half-scaled.
+const COMPOUND_AMOUNT = new RegExp(`^(?:\\+|/|plus\\s|${NUMBER}\\s*${UNIT})`, "i");
 
+/** Value of one NUMBER match. Its shapes mirror MIXED / FRACTION above; keep the two in step. */
 function toNumber(text: string): number | null {
   const last = text[text.length - 1];
-  if (last in VULGAR) {
-    const whole = text.slice(0, -1).trim();
+  if (Object.hasOwn(VULGAR, last)) {
+    const whole = text.slice(0, -1).replace(/[\s-]+$/, "");
     return (whole ? Number(whole) : 0) + VULGAR[last];
   }
-  const fraction = /^(?:(\d+)[\s-]+)?(\d+)\/(\d+)$/.exec(text);
+  const fraction = /^(?:(\d+)[\s-]+)?(\d+)[/⁄](\d+)$/.exec(text);
   if (fraction) {
     const [, whole, numerator, denominator] = fraction;
     if (Number(denominator) === 0) return null;
@@ -121,7 +130,7 @@ export function parseIngredient(line: string): ParsedIngredient {
   const quantity = toNumber(numberMatch[1]);
   if (quantity == null) return unparsed;
   const quantityMax = numberMatch[2] === undefined ? null : toNumber(numberMatch[2]);
-  if (numberMatch[2] !== undefined && quantityMax == null) return unparsed;
+  if (numberMatch[2] !== undefined && (quantityMax == null || quantityMax < quantity)) return unparsed;
 
   let rest = text.slice(numberMatch[0].length);
   // A number glued to a word ("2nd batch") isn't a quantity, unless the word is a unit ("100g").
@@ -133,7 +142,9 @@ export function parseIngredient(line: string): ParsedIngredient {
   let unit: Unit | null = null;
   if (unitMatch) {
     unit = unitMatch.unit;
-    rest = unitMatch.rest.trimStart().replace(/^of\s+/i, "");
+    rest = unitMatch.rest.trimStart();
+    if (COMPOUND_AMOUNT.test(rest)) return unparsed;
+    rest = rest.replace(/^[,;:]\s*/, "").replace(/^of(?:\s+|$)/i, "");
   }
   return { quantity, quantityMax, unit, item: rest.trim() };
 }
