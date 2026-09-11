@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_DRAFT, type RecipeDraft } from "./draft";
+import { PHOTO_SYSTEM_PROMPT } from "./llm/provider";
 import { imageMimeType, importRecipeFromPhoto } from "./photo";
 
 const extractFromImage = vi.fn<(input: unknown) => Promise<RecipeDraft>>();
@@ -57,10 +58,24 @@ describe("importRecipeFromPhoto", () => {
     expect(result.warnings.join(" ")).toMatch(/\[\?\]/);
   });
 
-  it("warns when only ingredients came back", async () => {
-    extractFromImage.mockResolvedValue({ ...DRAFT, steps: [] });
+  it("flags an unreadable word wherever it landed", async () => {
+    extractFromImage.mockResolvedValue({ ...DRAFT, yieldText: "makes [?] biscuits" });
     const result = await importRecipeFromPhoto(PHOTO);
-    expect(result.warnings.join(" ")).toMatch(/No steps/);
+    expect(result.warnings.join(" ")).toMatch(/\[\?\]/);
+  });
+
+  it("warns when only one half of the recipe came back", async () => {
+    extractFromImage.mockResolvedValue({ ...DRAFT, steps: [] });
+    expect((await importRecipeFromPhoto(PHOTO)).warnings.join(" ")).toMatch(/No steps/);
+    extractFromImage.mockResolvedValue({ ...DRAFT, ingredients: [] });
+    expect((await importRecipeFromPhoto(PHOTO)).warnings.join(" ")).toMatch(/No ingredients/);
+  });
+
+  it("keeps a recipe the model forgot to name, and says so", async () => {
+    extractFromImage.mockResolvedValue({ ...DRAFT, title: null });
+    const result = await importRecipeFromPhoto(PHOTO);
+    expect(result.draft.ingredients).toEqual(DRAFT.ingredients);
+    expect(result.warnings.join(" ")).toMatch(/name/i);
   });
 
   it("explains itself when no AI parser is configured", async () => {
@@ -74,9 +89,16 @@ describe("importRecipeFromPhoto", () => {
     await expect(importRecipeFromPhoto(PHOTO)).rejects.toMatchObject({ status: 422 });
   });
 
-  it("turns a provider failure into a 502", async () => {
+  it("turns a provider failure into a 502 that doesn't blame the photo", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     extractFromImage.mockRejectedValue(new Error("boom"));
-    await expect(importRecipeFromPhoto(PHOTO)).rejects.toMatchObject({ status: 502 });
+    await expect(importRecipeFromPhoto(PHOTO)).rejects.toMatchObject({ status: 502, message: expect.not.stringMatching(/in frame/) });
+  });
+});
+
+describe("PHOTO_SYSTEM_PROMPT", () => {
+  it("tells the model to name an unnamed recipe and to keep amounts as written", () => {
+    expect(PHOTO_SYSTEM_PROMPT).toMatch(/name it plainly after the dish/);
+    expect(PHOTO_SYSTEM_PROMPT).toMatch(/exactly as written/);
   });
 });

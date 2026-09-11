@@ -89,7 +89,11 @@ export interface SpeechRecipeExtractor {
   extractFromSpeech(input: SpeechInput): Promise<VoiceDraft>;
 }
 
-/** The formats both vision models read. The browser re-encodes to JPEG first, so HEIC never gets here. */
+/**
+ * The formats both vision models read. In practice uploads are JPEG: iOS hands a file input a
+ * JPEG rather than HEIC, and the browser re-encodes anything it can decode before sending.
+ * Whatever slips past that gets a clear 415 from the route.
+ */
 export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 export type ImageMimeType = (typeof IMAGE_MIME_TYPES)[number];
 
@@ -109,7 +113,8 @@ export const PHOTO_SYSTEM_PROMPT = `You read a photo of a written recipe and tur
 
 Rules:
 - Use only what is written in the photo. Never invent an ingredient, a quantity, a time or a step that isn't there.
-- Handwriting and old print are hard to read. Keep every word you can make out; where a word is genuinely illegible, write [?] in its place rather than guessing. Never guess a quantity.
+- Handwriting and old print are hard to read. Keep every word you can make out; where a word is genuinely illegible, write [?] in its place rather than guessing. Never guess a quantity, and keep quantities and units exactly as written.
+- title: as written on the card or page; if it isn't named, name it plainly after the dish.
 - If the photo holds more than one recipe, write up the most complete one and name the others in notes.
 - If there is no written recipe in the photo - a plate of food, a shopping list, something else entirely - return title null with empty ingredients and steps.
 ${DRAFT_FIELD_RULES}`;

@@ -19,7 +19,7 @@ const METHOD_LABEL: Record<Exclude<ImportResult["method"], "none">, string> = {
   text: "AI",
   video: "AI, from the video itself",
   voice: "AI writing down what you said",
-  photo: "AI reading your photo",
+  photo: "AI",
   metadata: "page details only",
 };
 
@@ -211,7 +211,10 @@ export function ImportFlow({ existingTags, existingCategories }: { existingTags:
             accept="image/*"
             className="sr-only"
             onChange={(e) => {
-              setPhoto(e.target.files?.[0] ?? null);
+              // Cancelling the picker clears the input in Chrome; keep what was already chosen.
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setPhoto(file);
               setError(null);
             }}
             disabled={busy}

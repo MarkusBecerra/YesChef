@@ -1,4 +1,4 @@
-import { draftHasContent, type ImportResult, type RecipeDraft } from "./draft";
+import { draftIsEmpty, type ImportResult, type RecipeDraft } from "./draft";
 import { ImportError } from "./fetch-page";
 import { getImageExtractor } from "./llm";
 import { IMAGE_MIME_TYPES, type ImageInput, type ImageMimeType } from "./llm/provider";
@@ -32,18 +32,22 @@ export async function importRecipeFromPhoto(input: ImageInput): Promise<ImportRe
   try {
     draft = await extractor.extractFromImage(input);
   } catch (err) {
+    // The provider failed, not the photo: a quota, a network blip, a bad token. Don't send the cook back to re-shoot.
     console.error("LLM photo extraction failed", err);
-    throw new ImportError("The AI couldn't read that photo. Try again with the whole recipe in frame, or enter it manually.", 502);
+    throw new ImportError("The AI couldn't read that photo just now. Try again in a moment, or enter the recipe manually.", 502);
   }
 
-  if (!draftHasContent(draft)) {
+  // Ingredients or steps with no title is a recipe the model forgot to name, not an empty photo.
+  if (draftIsEmpty(draft)) {
     throw new ImportError("The AI couldn't find a written recipe in that photo. Get the whole card or page in frame, in good light, and try again.", 422);
   }
 
   const warnings = ["Read by AI from your photo. Check every quantity against the original - handwriting is easy to misread."];
-  const unread = [draft.title, draft.description, draft.notes, ...draft.ingredients, ...draft.steps].some((s) => s?.includes("[?]"));
-  if (unread) warnings.push("Some words couldn't be made out; they're marked [?].");
+  const text = [draft.title, draft.description, draft.notes, draft.yieldText, draft.category, ...draft.ingredients, ...draft.steps, ...draft.tags];
+  if (text.some((s) => s?.includes("[?]"))) warnings.push("Some words couldn't be made out; they're marked [?].");
+  if (!draft.title) warnings.push("No name came through - give it one before saving.");
   if (draft.steps.length === 0) warnings.push("No steps came through - the photo may only show the ingredients.");
+  if (draft.ingredients.length === 0) warnings.push("No ingredients came through - the photo may only show the method.");
 
   return { draft, imageUrl: null, sourceUrl: null, sourceName: null, method: "photo", warnings };
 }
